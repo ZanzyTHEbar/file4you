@@ -2,10 +2,6 @@
 
 This is a simple tool that helps you to clean your desktop (or any directory) by moving specific groups of file types to a designated folder.
 
-Currently, this tool does not support moving files between mount points/file systems. This is because the tool uses the `rename` function from the `std::fs` module, which does not support moving files between mount points/file systems.
-
-This tool also does not support a target folder that is not a subdirectory of the source folder.
-
 You pass in a directory, and the tool will organize that directory by moving files of specific types to a designated folder within that directory.
 
 You can configure the file types and the folders in the config file.
@@ -21,27 +17,41 @@ You can always use the `.` path to specify the current directory.
 - [x] Add support for custom folders
 - [x] Automatically create config file if it does not exist
 - [x] Add colors to the output
-- [ ] Add support for subdirectories
+- [x] Add support for subdirectories
+- [x] Add support for cross-link and cross-device file manipulation
 - [ ] Add installers
 - [ ] Sign releases
 
 ## Usage
 
 ```bash
-desktop_cleaner [OPTIONS] [PATH]
+desktop_cleaner [OPTIONS] [PATH] [OPTIONAL TARGET PATH]
+```
+
+We also support the alias
+
+```bash
+dcx [OPTIONS] [PATH] [OPTIONAL TARGET PATH]
 ```
 
 ### Options
 
+All commands have alises.
+
 ```bash
---help, -h      Prints help information
---version, -v   Prints version information
+completion    Generate the autocompletion script for the specified shell
+help          Help about any command
+organize      Organize files in the specified directory, based on the configuration file rules
+rewind        Rewind the operations to an earlier state, uses git and revision sha (need git installed)
+upgrade       Upgrade DesktopCleaner to the latest version
+version       Print the version number of DesktopCleaner
 ```
 
 ### Arguments
 
 ```bash
 PATH            The path to the folder you want to clean
+TARGET PATH     The path you want to move everything to, then organize in the new location
 ```
 
 ## Installation
@@ -67,29 +77,26 @@ You can install from the releases or build from source.
 
 ### From source
 
+> [!IMPORTANT]\
+> This section of documentation is being worked on.
+
 1. Clone the repository
-2. Make sure rust is installed (if not, follow the instructions [here](https://www.rust-lang.org/tools/install))
+2. Make sure go is installed.
 
 ```bash
-cargo build --release
+make build
 ```
 
 Or to build and install
 
 ```bash
-cargo build --release && install --path <path>
+make build && make install
 ```
 
 To test the executable
 
 ```bash
-cargo run <args for executable>
-```
-
-Example:
-
-```bash
-cargo run -- -h
+make test
 ```
 
 ## List of file types
