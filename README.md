@@ -1,14 +1,6 @@
-# Desktop Cleaner
+# File4You
 
-This is a simple tool that helps you to clean your desktop (or any directory) by moving specific groups of file types to a designated folder.
-
-You pass in a directory, and the tool will organize that directory by moving files of specific types to a designated folder within that directory.
-
-You can configure the file types and the folders in the config file.
-
-if you do not specify a path, the tool will use your desktop, if a desktop cannot be found, it will use your home.
-
-You can always use the `.` path to specify the current directory.
+File4You is a powerful digital filing assistant designed to streamline & optimize file management. With interactive prompting, multiple llm provider support, local-only mode, robust filtering, tagging, and more! Designed to work with you to handle all of your file-managment needs.
 
 ## Development
 
@@ -19,19 +11,26 @@ You can always use the `.` path to specify the current directory.
 - [x] Add colors to the output
 - [x] Add support for subdirectories
 - [x] Add support for cross-link and cross-device file manipulation
+- [x] Add completions
+- [x] Add git support
+- [x] Add rewind support
+- [x] Add workspace creation
+- [ ] Add LLM Agents support
+- [ ] Add tagging engine
+- [ ] Add GUI
 - [ ] Add installers
 - [ ] Sign releases
 
 ## Usage
 
 ```bash
-desktop_cleaner [OPTIONS] [PATH] [OPTIONAL TARGET PATH]
+file4you [OPTIONS] [PATH] [OPTIONAL TARGET PATH]
 ```
 
 We also support the alias
 
 ```bash
-dcx [OPTIONS] [PATH] [OPTIONAL TARGET PATH]
+f4u [OPTIONS] [PATH] [OPTIONAL TARGET PATH]
 ```
 
 ### Options
@@ -71,7 +70,7 @@ You can install from the releases or build from source.
 > [!WARNING]\
 > Releases are not signed, so you will get a warning from your OS when you try to download and run the executable, this is normal and you can safely ignore it.
 
-1. Download the latest release from [here](https://github.com/ZanzyTHEbar/Desktop-Cleaner/releases)
+1. Download the latest release from [here](https://github.com/ZanzyTHEbar/file4you/releases)
 2. Place the executable somewhere on your computer
 3. Add the location of the executable to your PATH
 
@@ -101,7 +100,7 @@ make test
 
 ## List of file types
 
-Please see the [config file](/docs/.desktop_cleaner.toml) for an example.
+Please see the [config file](/docs/.file4you.toml) for an example.
 
 The list of file types and their associated folders is only limited by your imagination (and the rules of your OS).
 
