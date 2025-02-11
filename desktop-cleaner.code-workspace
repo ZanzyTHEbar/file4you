@@ -148,7 +148,8 @@
       "ymail",
       "yopmail",
       "zonnet"
-    ]
+    ],
+    "makefile.configureOnOpen": false
   },
   "extensions": {
     "recommendations": [
