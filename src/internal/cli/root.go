@@ -52,9 +52,8 @@ func NewRoot(params *CmdParams) *cobra.Command {
 		params.Palette = []*cobra.Command{}
 	}
 
-	for _, cmd := range params.Palette {
-		rootCmd.AddCommand(cmd)
-	}
+	// Add commands to the root
+	rootCmd.AddCommand(params.Palette...)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/.desktop_cleaner/.desktop_cleaner.toml)")
 

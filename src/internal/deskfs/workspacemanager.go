@@ -2,6 +2,7 @@ package deskfs
 
 import (
 	"context"
+	"desktop-cleaner/internal"
 	"desktop-cleaner/internal/db"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/ZanzyTHEbar/assert-lib"
+	"github.com/google/uuid"
 )
 
 type WorkspaceManager struct {
@@ -24,11 +26,11 @@ func NewWorkspaceManager(centralDB *db.CentralDBProvider, assertHandler *assert.
 }
 
 func createWorkspacePath(rootPath string) string {
-	return filepath.Join(rootPath, DefaultConfigName)
+	return filepath.Join(rootPath, internal.DefaultWorkspaceDotDir)
 }
 
 // CreateWorkspace creates a new workspace, adding it to the central DB and initializing its own DB.
-func (wm *WorkspaceManager) CreateWorkspace(rootPath, config string) (int, error) {
+func (wm *WorkspaceManager) CreateWorkspace(rootPath, config string) (uuid.UUID, error) {
 	slog.Debug(fmt.Sprintf("Creating workspace at path: %s\n", rootPath))
 
 	rootPath = createWorkspacePath(rootPath)
@@ -43,24 +45,62 @@ func (wm *WorkspaceManager) CreateWorkspace(rootPath, config string) (int, error
 		}
 	}
 
+	// create the ignore file
+	ignoreFilePath := filepath.Join(rootPath, ".desktop_cleaner_ignore")
+
+	if _, err := os.Stat(ignoreFilePath); os.IsNotExist(err) {
+		if _, err := os.Create(ignoreFilePath); err != nil {
+			slog.Info(fmt.Sprintf("Path %s: %v", ignoreFilePath, err))
+			errMsg := fmt.Sprintf("Error creating ignore file at %s", ignoreFilePath)
+			ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error)
+		}
+
+		// Add the `.git` folder to the ignore file
+		ignoreFile, err := os.OpenFile(ignoreFilePath, os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			slog.Info(fmt.Sprintf("Path %s: %v", ignoreFilePath, err))
+			errMsg := fmt.Sprintf("Error opening ignore file at %s", ignoreFilePath)
+			ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error)
+		}
+
+		// Write the `.git` folder to the ignore file
+		if _, err := ignoreFile.WriteString(".git\n"); err != nil {
+			slog.Info(fmt.Sprintf("Path %s: %v", ignoreFilePath, err))
+			errMsg := fmt.Sprintf("Error writing to ignore file at %s", ignoreFilePath)
+			ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error)
+		}
+
+		defer ignoreFile.Close()
+	}
+
 	// Initialize workspace-specific database
 	workspaceDB, err := db.NewWorkspaceDB(rootPath)
 	if err != nil {
-		return 0, fmt.Errorf("failed to initialize workspace DB: %v", err)
+		return uuid.Nil, fmt.Errorf("failed to initialize workspace database: %v", err)
 	}
 	defer workspaceDB.Close()
 
-	workspaceID, err := wm.centralDB.AddWorkspace(rootPath, config)
+	workspace, err := wm.centralDB.AddWorkspace(rootPath, config)
 	if err != nil {
-		return 0, err
+		return uuid.Nil, fmt.Errorf("failed to add workspace: %v", err)
 	}
 
-	slog.Debug(fmt.Sprintf("Workspace created with ID: %d at path: %s\n", workspaceID, rootPath))
+	workspaceID := workspace.ID
+
+	slog.Debug(fmt.Sprintf("Workspace created with ID: %s at path: %s\n", workspaceID, rootPath))
 	return workspaceID, nil
 }
 
+func (wm *WorkspaceManager) GetWorkspace(workspaceID uuid.UUID) (*db.Workspace, error) {
+	workspace, err := wm.centralDB.GetWorkspace(workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get workspace: %v", err)
+	}
+	return workspace, nil
+}
+
 // UpdateWorkspace updates the configuration of an existing workspace by ID.
-func (wm *WorkspaceManager) UpdateWorkspace(workspaceID int, newConfig string) error {
+func (wm *WorkspaceManager) UpdateWorkspace(workspaceID uuid.UUID, newConfig string) error {
 	_, err := wm.centralDB.UpdateWorkspaceConfig(workspaceID, newConfig)
 	if err != nil {
 		return fmt.Errorf("failed to update workspace configuration: %v", err)
@@ -70,7 +110,7 @@ func (wm *WorkspaceManager) UpdateWorkspace(workspaceID int, newConfig string) e
 }
 
 // DeleteWorkspace deletes a workspace from the central DB and removes its specific database file.
-func (wm *WorkspaceManager) DeleteWorkspace(workspaceID int) error {
+func (wm *WorkspaceManager) DeleteWorkspace(workspaceID uuid.UUID) error {
 	// Get the root path of the workspace to delete
 	rootPath, err := wm.centralDB.GetWorkspacePath(workspaceID)
 	if err != nil {
@@ -170,7 +210,7 @@ func (db *SQLiteWorkspaceDB) AddWorkspace(rootPath string, config string) (int, 
 }
 
 // AddFileMetadata adds file metadata for a given workspace
-func (db *SQLiteWorkspaceDB) AddFileMetadata(workspaceID int, path string, metadata deskfs.Metadata) error {
+func (db *SQLiteWorkspaceDB) AddFileMetadata(workspaceID uuid.UUID, path string, metadata deskfs.Metadata) error {
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata into JSON: %w", err)
@@ -185,7 +225,7 @@ func (db *SQLiteWorkspaceDB) AddFileMetadata(workspaceID int, path string, metad
 }
 
 // UpdateFileMetadata updates the metadata for a given file in the workspace
-func (db *SQLiteWorkspaceDB) UpdateFileMetadata(workspaceID int, path string, metadata deskfs.Metadata) error {
+func (db *SQLiteWorkspaceDB) UpdateFileMetadata(workspaceID uuid.UUID, path string, metadata deskfs.Metadata) error {
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata into JSON: %w", err)
@@ -215,7 +255,7 @@ func (db *SQLiteWorkspaceDB) StoreVector(fileID int, vector []float64) error {
 }
 
 // AddHistoryEvent adds a historical event to track workspace changes
-func (db *SQLiteWorkspaceDB) AddHistoryEvent(workspaceID int, eventType string, eventJSON string) error {
+func (db *SQLiteWorkspaceDB) AddHistoryEvent(workspaceID uuid.UUID, eventType string, eventJSON string) error {
 	_, err := db.DB.Exec("INSERT INTO history (workspace_id, event_type, event_json) VALUES (?, ?, ?)", workspaceID, eventType, eventJSON)
 	if err != nil {
 		return fmt.Errorf("failed to insert history event: %w", err)
@@ -226,7 +266,7 @@ func (db *SQLiteWorkspaceDB) AddHistoryEvent(workspaceID int, eventType string, 
 
 // GetWorkspaceID gets the workspace ID by root path
 func (db *SQLiteWorkspaceDB) GetWorkspaceID(rootPath string) (int, error) {
-	var workspaceID int
+	var workspaceID uuid.UUID
 	err := db.DB.QueryRow("SELECT id FROM workspaces WHERE root_path = ?", rootPath).Scan(&workspaceID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get workspace ID: %w", err)
@@ -250,7 +290,7 @@ func RebuildWorkspace(dbPath string) error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	var workspaceID int
+	var workspaceID uuid.UUID
 	err = workspaceDB.DB.QueryRow("SELECT id FROM workspaces WHERE root_path = ?", pwd).Scan(&workspaceID)
 	if err != nil {
 		return fmt.Errorf("workspace not found in database: %w", err)

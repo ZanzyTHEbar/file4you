@@ -2,6 +2,8 @@ package deskfs
 
 import (
 	"context"
+	"desktop-cleaner/internal"
+	"desktop-cleaner/internal/filesystem/trees"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,20 +15,15 @@ import (
 )
 
 var (
-	// DefaultConfigPath is the default path to the config file
-	DefaultConfigName   = ".desktop_cleaner"
-	DefaultConfigPath   = filepath.Join(os.Getenv("HOME"), ".config", "desktop_cleaner")
 	ConfigAssertHandler = assert.NewAssertHandler()
-	DefaultCacheDir     = filepath.Join(DefaultConfigPath, ".cache")
 )
 
 // Config holds the mapping of file types to extensions
 type DeskFSConfig struct {
 	gobaselogger.Config
-	DirectoryTree *DirectoryTree `toml:"directory_tree"`
-	FileTypeTree  *FileTypeTree  `toml:"file_type_tree"`
-	TargetDir     string         `toml:"target_dir"`
-	CacheDir      string         `toml:"cache_dir"`
+	FileTypeTree *trees.FileTypeTree `toml:"file_type_tree"`
+	TargetDir    string              `toml:"target_dir"`
+	CacheDir     string              `toml:"cache_dir"`
 }
 
 type IntermediateConfig struct {
@@ -50,17 +47,21 @@ func NewIntermediateConfig(optionalPath string) *IntermediateConfig {
 	var configPath string
 
 	// Step 1: Determine the configuration file path
-	tomlFileName := filepath.Join(DefaultConfigName, DefaultConfigName+".toml")
-	if _, err := os.Stat(tomlFileName); err != nil && optionalPath == "" {
-		slog.Debug(fmt.Sprintf("Error loading config file: %v\n", err))
-		configPath = tomlFileName
-	} else if optionalPath != "" {
+	if optionalPath != "" {
 		configPath = optionalPath
-	} else {
-		configPath = filepath.Join(DefaultConfigPath, tomlFileName)
 	}
 
-	slog.Info(fmt.Sprintf("\nConfig path: %s\n", configPath))
+	if _, err := os.Stat(configPath); err == nil {
+		slog.Warn(fmt.Sprintf("Optional path provided: %s\n", optionalPath))
+	} else if os.Stat(internal.DefaultWorkspaceConfigFile); err == nil {
+		slog.Warn(fmt.Sprintf("Config file found: %s\n", internal.DefaultWorkspaceConfigFile))
+		configPath = optionalPath
+	} else {
+		slog.Warn(fmt.Sprintf("Config file found: %s\n", internal.DefaultGlobalConfigFile))
+		configPath = internal.DefaultGlobalConfigFile
+	}
+
+	slog.Info(fmt.Sprintf("Config path: %s\n", configPath))
 
 	var defaultConfig IntermediateConfig
 
@@ -106,17 +107,8 @@ func NewIntermediateConfig(optionalPath string) *IntermediateConfig {
 }
 
 func NewDeskFSConfig() *DeskFSConfig {
-	assertHandler := assert.NewAssertHandler()
-
-	cwd, err := os.Getwd()
-	assertHandler.NoError(context.Background(), err, fmt.Sprintf("Error getting current working directory: %v", err), slog.Error)
-
-	directoryTree, err := NewDirectoryTree(cwd)
-	assertHandler.NoError(context.Background(), err, fmt.Sprintf("Error creating directory tree: %v", err), slog.Error)
-
 	return &DeskFSConfig{
-		DirectoryTree: directoryTree,
-		FileTypeTree:  NewFileTypeTree(),
+		FileTypeTree: trees.NewFileTypeTree(),
 	}
 }
 
@@ -172,6 +164,6 @@ func getDefaultConfig() IntermediateConfig {
 				Level: gobaselogger.LoggerLevels["debug"].String(),
 			},
 		},
-		CacheDir: DefaultCacheDir,
+		CacheDir: internal.DefaultCacheDir,
 	}
 }

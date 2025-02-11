@@ -16,7 +16,6 @@
       "**/.env": false,
       "**/.desktop_cleaner": false
     },
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
     "editor.foldingStrategy": "indentation",
     "editor.formatOnSave": true,
     "editor.quickSuggestions": {
@@ -149,7 +148,8 @@
       "ymail",
       "yopmail",
       "zonnet"
-    ]
+    ],
+    "makefile.configureOnOpen": false
   },
   "extensions": {
     "recommendations": [

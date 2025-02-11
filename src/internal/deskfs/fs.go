@@ -3,6 +3,7 @@ package deskfs
 import (
 	"context"
 	"desktop-cleaner/internal/db"
+	"desktop-cleaner/internal/filesystem/trees"
 	"desktop-cleaner/internal/terminal"
 	"errors"
 	"fmt"
@@ -48,7 +49,6 @@ type DesktopFS struct {
 	CacheDir         string
 	HomeDCDir        string
 	WorkspaceManager *WorkspaceManager
-	DirectoryTree    *DirectoryTree
 	InstanceConfig   *DeskFSConfig
 	term             *terminal.Terminal
 }
@@ -131,22 +131,7 @@ func CalculateMaxDepth(sourceDir string) (int, error) {
 	return maxDepth, nil
 }
 
-// Move or copy files based on the configuration
-func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Ensure context is canceled after function e
-
-	if params.GitEnabled {
-		// Clear uncommitted changes or stash them based on user input
-		if err := dfs.clearChangesIfNeeded(dfs.Cwd, params); err != nil {
-			return fmt.Errorf("failed to clear changes: %w", err)
-		}
-
-		if err := dfs.handleUncommittedChanges(dfs.Cwd, params); err != nil {
-			return fmt.Errorf("failed to handle uncommitted changes: %w", err)
-		}
-	}
-
+func (dfs *DesktopFS) IndexDirectory(cfg *DeskFSConfig, params *FilePathParams) error {
 	// Calculate the maximum depth of SourceDir
 	maxDepth, err := CalculateMaxDepth(params.SourceDir)
 	if err != nil {
@@ -157,12 +142,22 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams
 		return fmt.Errorf("failed to build directory tree: %w", err)
 	}
 
+	return nil
+}
+
+// Move or copy files based on the configuration
+func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure context is canceled after function exits
+
+	dfs.IndexDirectory(cfg, params)
+
 	var wg sync.WaitGroup
 	var once sync.Once
 	errCh := make(chan error, 1)
 
 	// Traverse and organize files based on config
-	dfs.traverseAndOrganize(ctx, cancel, dfs.DirectoryTree.Root, cfg, params, &wg, errCh)
+	dfs.traverseAndOrganize(ctx, cancel, dfs.WorkspaceManager.centralDB.DirectoryTree.Root, cfg, params, &wg, errCh)
 
 	// Wait for all goroutines to complete
 	go func() {
@@ -224,7 +219,7 @@ func (dfs *DesktopFS) GetDesktopCleanerIgnore(dir string) (*ignore.GitIgnore, er
 
 // Copy copies a file or directory to the destination path.
 // It uses recursion for directories if the recursive flag is enabled.
-func (dfs *DesktopFS) Copy(node *DirectoryNode, dst string, recursive bool, remove bool, dryrun bool) error {
+func (dfs *DesktopFS) Copy(node *trees.DirectoryNode, dst string, recursive bool, remove bool, dryrun bool) error {
 	if len(node.Children) > 0 || len(node.Files) > 0 { // Check if node is a directory
 		if !recursive {
 			return fmt.Errorf("source is a directory, use recursive flag to copy directories")
@@ -269,7 +264,7 @@ func (dfs *DesktopFS) Copy(node *DirectoryNode, dst string, recursive bool, remo
 }
 
 // Helper function for copying a file
-func (dfs *DesktopFS) copyFile(fileNode *FileNode, dst string, remove bool, dryrun bool) error {
+func (dfs *DesktopFS) copyFile(fileNode *trees.FileNode, dst string, remove bool, dryrun bool) error {
 
 	if dryrun {
 		slog.Info(fmt.Sprintf("Dry run: moving %s to %s\n", fileNode.Path, dst))
@@ -303,7 +298,7 @@ func (dfs *DesktopFS) copyFile(fileNode *FileNode, dst string, remove bool, dryr
 
 // Move attempts to move a file or directory from src to dst.
 // If a cross-device link error occurs, it falls back to copying and deleting the original.
-func (dfs *DesktopFS) Move(node *DirectoryNode, dst string, recursive bool, dryrun bool) error {
+func (dfs *DesktopFS) Move(node *trees.DirectoryNode, dst string, recursive bool, dryrun bool) error {
 
 	if dryrun {
 		slog.Info(fmt.Sprintf("Dry run: moving %s to %s\n", node.Path, dst))
@@ -327,32 +322,31 @@ func (dfs *DesktopFS) Move(node *DirectoryNode, dst string, recursive bool, dryr
 }
 
 // MoveToTrash moves a file or directory to the trash (cache) directory
-func (dfs *DesktopFS) MoveToTrash(node *DirectoryNode) error {
+func (dfs *DesktopFS) MoveToTrash(node *trees.DirectoryNode) error {
 	dst := filepath.Join(dfs.CacheDir, filepath.Base(node.Path))
 	return os.Rename(node.Path, dst)
 }
 
 // buildTreeAndCache recursively builds a directory tree and populates a cache
 func (dfs *DesktopFS) buildTreeAndCache(rootPath string, recursive bool, maxDepth int) error {
-
 	// Initialize the DirectoryTree and Cache
-	if dfs.DirectoryTree == nil {
-		newDirectoryTree, err := NewDirectoryTree(rootPath)
+	if dfs.WorkspaceManager.centralDB.DirectoryTree == nil {
+		newDirectoryTree, err := trees.NewDirectoryTree(rootPath)
 		if err != nil {
 			return fmt.Errorf("failed to create directory tree: %w", err)
 		}
-		dfs.DirectoryTree = newDirectoryTree
+		dfs.WorkspaceManager.centralDB.DirectoryTree = newDirectoryTree
 	}
 
-	if dfs.DirectoryTree.Cache == nil {
-		dfs.DirectoryTree.Cache = make(map[string]*DirectoryNode)
-	}
+	//if dfs.WorkspaceManager.centralDB.DirectoryTree.Cache == nil {
+	//	dfs.WorkspaceManager.centralDB.DirectoryTree.Cache = make(map[string]*trees.DirectoryNode)
+	//}
 
-	return dfs.buildTreeNodes(dfs.DirectoryTree.Root, recursive, maxDepth, 0)
+	return dfs.buildTreeNodes(dfs.WorkspaceManager.centralDB.DirectoryTree.Root, recursive, maxDepth, 0)
 }
 
 // Recursive helper to populate the directory tree with DirectoryNode entries
-func (dfs *DesktopFS) buildTreeNodes(node *DirectoryNode, recursive bool, maxDepth int, currentDepth int) error {
+func (dfs *DesktopFS) buildTreeNodes(node *trees.DirectoryNode, recursive bool, maxDepth int, currentDepth int) error {
 	// Check if the current depth exceeds the maxDepth
 	if currentDepth > maxDepth {
 		slog.Warn(fmt.Sprintf("Max depth of %d reached at %s. Skipping deeper levels.\n", maxDepth, node.Path))
@@ -364,14 +358,25 @@ func (dfs *DesktopFS) buildTreeNodes(node *DirectoryNode, recursive bool, maxDep
 		return err
 	}
 
+	ignored, err := dfs.GetDesktopCleanerIgnore(node.Path)
+	if err != nil {
+		return err
+	}
+
 	for _, entry := range entries {
 		childPath := filepath.Join(node.Path, entry.Name())
-		var child *DirectoryNode
+		//var child *trees.DirectoryNode
+
+		// Skip ignored files and directories
+		if ignored != nil && ignored.MatchesPath(childPath) {
+			slog.Info(fmt.Sprintf("Ignoring file %s\n", childPath))
+			continue
+		}
 
 		if entry.IsDir() {
-			childDir := NewDirectoryNode(childPath, node)
+			childDir := trees.NewDirectoryNode(childPath, node)
 			node.Children = append(node.Children, childDir)
-			dfs.DirectoryTree.SafeCacheSet(childPath, childDir)
+			//dfs.WorkspaceManager.centralDB.DirectoryTree.SafeCacheSet(childPath, childDir)
 
 			if !recursive {
 				continue
@@ -386,18 +391,14 @@ func (dfs *DesktopFS) buildTreeNodes(node *DirectoryNode, recursive bool, maxDep
 				slog.Warn(fmt.Sprintf("Error getting file info for %s: %v", entry.Name(), err))
 			}
 
-			size := entryInfo.Size()
-			modtime := entryInfo.ModTime()
-
-			childFile := &FileNode{
-				Path:       childPath,
-				Name:       entry.Name(),
-				Extension:  strings.ToLower(filepath.Ext(entry.Name())),
-				Size:       size,
-				ModifiedAt: modtime,
+			childFile := &trees.FileNode{
+				Path:      childPath,
+				Name:      entry.Name(),
+				Extension: strings.ToLower(filepath.Ext(entry.Name())),
+				Metadata:  trees.NewMetadata(entryInfo),
 			}
-			child = node.AddFile(childFile)
-			dfs.DirectoryTree.SafeCacheSet(childPath, child)
+			_ = node.AddFile(childFile)
+			//dfs.WorkspaceManager.centralDB.DirectoryTree.SafeCacheSet(childPath, child)
 		}
 	}
 
@@ -405,11 +406,11 @@ func (dfs *DesktopFS) buildTreeNodes(node *DirectoryNode, recursive bool, maxDep
 }
 
 // traverseAndOrganize traverses the tree and organizes files based on the configuration
-func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.CancelFunc, node *DirectoryNode, cfg *DeskFSConfig, params *FilePathParams, wg *sync.WaitGroup, errCh chan error) {
+func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.CancelFunc, node *trees.DirectoryNode, cfg *DeskFSConfig, params *FilePathParams, wg *sync.WaitGroup, errCh chan error) {
 	// Process each file within the directory
 	for _, fileNode := range node.Files {
 		wg.Add(1)
-		go func(fileNode *FileNode) {
+		go func(fileNode *trees.FileNode) {
 			defer wg.Done()
 
 			// Respect context cancellation
@@ -466,7 +467,7 @@ func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.Ca
 			if params.CopyFiles {
 				fileErr = dfs.copyFile(fileNode, destPath, params.RemoveAfter, params.DryRun)
 			} else {
-				fileErr = dfs.Move(&DirectoryNode{Path: fileNode.Path}, destPath, false, params.DryRun)
+				fileErr = dfs.Move(&trees.DirectoryNode{Path: fileNode.Path}, destPath, false, params.DryRun)
 			}
 			// Send error to errCh and cancel context on first failure
 			if fileErr != nil {
@@ -490,7 +491,7 @@ func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.Ca
 
 // determineTargetFolder traverses the FileTypeTree in DeskFSConfig to find the appropriate folder
 // based on the file's extension. It returns the path to the target folder if a match is found.
-func (dfs *DesktopFS) determineTargetFolder(ctx context.Context, fileNode *FileNode, cfg *DeskFSConfig) (string, bool) {
+func (dfs *DesktopFS) determineTargetFolder(ctx context.Context, fileNode *trees.FileNode, cfg *DeskFSConfig) (string, bool) {
 	ext := fileNode.Extension
 
 	path, found := dfs.findFolderForExtension(ctx, cfg.FileTypeTree.Root, ext)
@@ -503,7 +504,7 @@ func (dfs *DesktopFS) determineTargetFolder(ctx context.Context, fileNode *FileN
 }
 
 // Helper recursive function to search for the appropriate folder in the FileTypeTree.
-func (dfs *DesktopFS) findFolderForExtension(ctx context.Context, node *FileTypeNode, ext string) (string, bool) {
+func (dfs *DesktopFS) findFolderForExtension(ctx context.Context, node *trees.FileTypeNode, ext string) (string, bool) {
 	// Traverse the tree to find a matching extension in the nodes
 	if node.AllowsExtension(ext) {
 		return buildPathFromNode(ctx, node), true
@@ -520,7 +521,7 @@ func (dfs *DesktopFS) findFolderForExtension(ctx context.Context, node *FileType
 }
 
 // buildPathFromNode constructs the path from the root to the given node.
-func buildPathFromNode(ctx context.Context, node *FileTypeNode) string {
+func buildPathFromNode(ctx context.Context, node *trees.FileTypeNode) string {
 	// If this is the root node, start from its children
 	if node.IsRoot() && len(node.Children) >= 1 {
 		// Start from the first child to avoid adding "root" to the path

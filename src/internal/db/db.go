@@ -1,9 +1,34 @@
 package db
 
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type OperationType int
+
+const (
+	OperationTypeCreate OperationType = iota
+	OperationTypeUpdate
+	OperationTypeDelete
+	OperationTypeMove
+)
+
 type Workspace struct {
-	ID       int
-	RootPath string
-	Config   string
+	ID        uuid.UUID
+	RootPath  string
+	Config    string
+	Timestamp time.Time
+}
+
+type OperationHistory struct {
+	ID          uuid.UUID
+	NodeID      uuid.UUID
+	Operation   OperationType
+	NewPath     string
+	TimeStamp   time.Time
+	PerformedBy string
 }
 
 // Example usage:

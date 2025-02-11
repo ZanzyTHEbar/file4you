@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+
+	"github.com/google/uuid"
 )
 
 // WorkspaceDB handles data storage for a specific workspace.
@@ -29,9 +31,9 @@ func NewWorkspaceDB(rootPath string) (*WorkspaceDB, error) {
 // init sets up tables for the workspace database.
 func (w *WorkspaceDB) init() error {
 	createTables := []string{
-		`CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id INTEGER, path TEXT, metadata BLOB)`,
-		//`CREATE TABLE IF NOT EXISTS vectors (file_id INTEGER, vector BLOB)`,
-		`CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT, event_json TEXT)`,
+		`CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, workspace_id TEXT, path TEXT, metadata BLOB)`,
+		//`CREATE TABLE IF NOT EXISTS vectors (file_id TEXT PRIMARY KEY, vector BLOB)`,
+		`CREATE TABLE IF NOT EXISTS history (id TEXT PRIMARY KEY, event_type TEXT, event_json TEXT)`,
 	}
 	for _, query := range createTables {
 		if _, err := w.db.Exec(query); err != nil {
@@ -41,13 +43,48 @@ func (w *WorkspaceDB) init() error {
 	return nil
 }
 
+func (w *WorkspaceDB) GetWorkspace() (*Workspace, error) {
+	var workspace Workspace
+	err := w.db.QueryRow("SELECT * FROM workspaces").Scan(&workspace.ID, &workspace.RootPath, &workspace.Config)
+	if err != nil {
+		return nil, err
+	}
+	return &workspace, nil
+}
+
 // Close closes the workspace-specific database connection.
 func (w *WorkspaceDB) Close() error {
 	return w.db.Close()
 }
 
+func (w *WorkspaceDB) GetHistory() ([]string, error) {
+	rows, err := w.db.Query("SELECT * FROM history")
+	if err != nil {
+		return nil, err
+	}
+
+	var history []string
+	for rows.Next() {
+		var event string
+		if err := rows.Scan(&event); err != nil {
+			return nil, err
+		}
+		history = append(history, event)
+	}
+
+	return history, nil
+}
+func (w *WorkspaceDB) SetHistory([]string) error {
+	_, err := w.db.Exec("INSERT INTO history (event) VALUES (?)", "event")
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
 // Utility function to load a workspace database by ID.
-func LoadWorkspaceDBProvider(central *CentralDBProvider, workspaceID int) (*WorkspaceDB, error) {
+func LoadWorkspaceDBProvider(central *CentralDBProvider, workspaceID uuid.UUID) (*WorkspaceDB, error) {
 	rootPath, err := central.GetWorkspacePath(workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("could not find workspace with ID %d: %v", workspaceID, err)

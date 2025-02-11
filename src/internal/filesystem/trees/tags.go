@@ -1,4 +1,4 @@
-package deskfs
+package trees
 
 import "strings"
 

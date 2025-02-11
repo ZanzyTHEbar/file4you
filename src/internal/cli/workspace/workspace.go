@@ -42,7 +42,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 			if err != nil {
 				params.Term.OutputErrorAndExit("Error creating workspace: %v", err)
 			}
-			params.Term.OutputSuccess(fmt.Sprintf("Workspace created successfully with ID: %d", workspaceID))
+			params.Term.OutputSuccess(fmt.Sprintf("Workspace created successfully with ID: %s", workspaceID))
 		},
 	}
 	createCmd.Flags().String("root-path", "", "Root path for the workspace (required)")
@@ -57,11 +57,20 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 			id, _ := cmd.Flags().GetInt("id")
 			config, _ := cmd.Flags().GetString("config")
 
+			// List the workspaces, and then update the workspace with the given ID
+			workspaces, err := params.DeskFS.WorkspaceManager.ListWorkspaces()
+			if err != nil {
+				params.Term.OutputErrorAndExit("Error listing workspaces: %v", err)
+			}
+
+			// workspaces are already ordered by timestamp, so we can use the index as the ID
 			if id <= 0 {
 				params.Term.OutputErrorAndExit("Error: valid workspace ID is required")
 			}
+			// Subtract 1 from the ID to get the index
+			id--
 
-			err := params.DeskFS.WorkspaceManager.UpdateWorkspace(id, config)
+			err = params.DeskFS.WorkspaceManager.UpdateWorkspace(workspaces[id].ID, config)
 			if err != nil {
 				params.Term.OutputErrorAndExit("Error updating workspace: %v", err)
 			}
@@ -82,7 +91,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 			}
 			params.Term.OutputSuccess("Workspaces:")
 			for _, ws := range workspaces {
-				params.Term.OutputInfo(fmt.Sprintf("ID: %d, Root Path: %s", ws.ID, ws.RootPath))
+				params.Term.OutputInfo(fmt.Sprintf("ID: %s, Root Path: %s", ws.ID, ws.RootPath))
 			}
 		},
 	}
@@ -95,11 +104,19 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			id, _ := cmd.Flags().GetInt("id")
 
+			// List the workspaces, and then update the workspace with the given ID
+			workspaces, err := params.DeskFS.WorkspaceManager.ListWorkspaces()
+			if err != nil {
+				params.Term.OutputErrorAndExit("Error listing workspaces: %v", err)
+			}
+
+			// workspaces are already ordered by timestamp, so we can use the index as the ID
 			if id <= 0 {
 				params.Term.OutputErrorAndExit("Error: valid workspace ID is required")
 			}
-
-			err := params.DeskFS.WorkspaceManager.DeleteWorkspace(id)
+			// Subtract 1 from the ID to get the index
+			id--
+			err = params.DeskFS.WorkspaceManager.DeleteWorkspace(workspaces[id].ID)
 			if err != nil {
 				params.Term.OutputErrorAndExit("Error deleting workspace: %v", err)
 			}
