@@ -154,10 +154,8 @@
   "extensions": {
     "recommendations": [
       "golang.go",
-      "dbaeumer.vscode-eslint",
       "esbenp.prettier-vscode",
       "tamasfe.even-better-toml",
-      "bradlc.vscode-tailwindcss",
       "vscode.makefile-tools"
     ]
   }
