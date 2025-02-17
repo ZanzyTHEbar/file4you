@@ -2,10 +2,10 @@ package deskfs
 
 import (
 	"context"
-	"desktop-cleaner/internal/db"
-	"desktop-cleaner/internal/filesystem/trees"
-	"desktop-cleaner/internal/terminal"
 	"errors"
+	"file4you/internal/db"
+	"file4you/internal/filesystem/trees"
+	"file4you/internal/terminal"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,8 +15,10 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/ZanzyTHEbar/assert-lib"
+	"github.com/rs/zerolog/log"
 
 	ignore "github.com/sabhiram/go-gitignore"
 )
@@ -43,6 +45,17 @@ type FilePathParams struct {
 	ConflictResolution ConflictResolutionType // "overwrite", "skip", or "rename"
 }
 
+// Validate checks if the FilePathParams are valid
+func (p *FilePathParams) Validate() error {
+	if p.SourceDir == "" || p.TargetDir == "" {
+		return fmt.Errorf("source and target directories must be specified")
+	}
+	if p.MaxDepth < 0 {
+		return fmt.Errorf("max depth cannot be negative")
+	}
+	return nil
+}
+
 type DesktopFS struct {
 	HomeDir          string
 	Cwd              string
@@ -51,6 +64,7 @@ type DesktopFS struct {
 	WorkspaceManager *WorkspaceManager
 	InstanceConfig   *DeskFSConfig
 	term             *terminal.Terminal
+	gitMutex         sync.Mutex
 }
 
 // NewFilePathParams initializes FilePathParams with sensible defaults.
@@ -58,11 +72,11 @@ func NewFilePathParams() *FilePathParams {
 	return &FilePathParams{
 		SourceDir:          "",
 		TargetDir:          "",
-		Recursive:          true,     // Default to recursive to handle directories deeply
-		CopyFiles:          false,    // Default to moving files instead of copying
-		RemoveAfter:        false,    // Default to keeping source files after move
-		DryRun:             false,    // Default to executing actual file operations
-		ConflictResolution: "rename", // Default to renaming files to avoid conflicts
+		Recursive:          true,
+		CopyFiles:          false,
+		RemoveAfter:        false,
+		DryRun:             false,
+		ConflictResolution: "rename",
 	}
 }
 
@@ -154,7 +168,17 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams
 
 	var wg sync.WaitGroup
 	var once sync.Once
-	errCh := make(chan error, 1)
+	errCh := make(chan error, len(dfs.WorkspaceManager.centralDB.DirectoryTree.Root.Files))
+
+	// Add timeout
+	go func() {
+		select {
+		case <-time.After(10 * time.Minute):
+			cancel()
+		case <-ctx.Done():
+			return
+		}
+	}()
 
 	// Traverse and organize files based on config
 	dfs.traverseAndOrganize(ctx, cancel, dfs.WorkspaceManager.centralDB.DirectoryTree.Root, cfg, params, &wg, errCh)
@@ -200,18 +224,18 @@ func (dfs *DesktopFS) InitConfig(optionalConfigPath string) {
 }
 
 func (dfs *DesktopFS) GetDesktopCleanerIgnore(dir string) (*ignore.GitIgnore, error) {
-	ignorePath := filepath.Join(dir, ".desktop-cleaner-ignore")
+	ignorePath := filepath.Join(dir, ".file4you-ignore")
 
 	if _, err := os.Stat(ignorePath); err == nil {
 		ignored, err := ignore.CompileIgnoreFile(ignorePath)
 
 		if err != nil {
-			return nil, fmt.Errorf("error reading .desktop-cleaner-ignore file: %s", err)
+			return nil, fmt.Errorf("error reading .file4you-ignore file: %s", err)
 		}
 
 		return ignored, nil
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("error checking for .desktop-cleaner-ignore file: %s", err)
+		return nil, fmt.Errorf("error checking for .file4you-ignore file: %s", err)
 	}
 
 	return nil, nil
@@ -226,16 +250,21 @@ func (dfs *DesktopFS) Copy(node *trees.DirectoryNode, dst string, recursive bool
 		}
 
 		// Ensure destination directory exists
-		if err := os.MkdirAll(dst, os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dst, err)
+		if !dryrun {
+			if err := os.MkdirAll(dst, os.ModePerm); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", dst, err)
+			}
+		} else {
+			log.Info().Msgf("Dry run: would create directory %s", dst)
 		}
 
 		// Copy each child directory
 		for _, childDir := range node.Children {
 			childDst := filepath.Join(dst, childDir.Path)
 			if dryrun {
-				slog.Info(fmt.Sprintf("Dry run: moving %s to %s\n", childDir.Path, dst))
-				return nil
+				log.Info().Msgf("Dry run: moving directory %s to %s", childDir.Path, childDst)
+				// Continue processing other children
+				continue
 			}
 			if err := dfs.Copy(childDir, childDst, recursive, remove, dryrun); err != nil {
 				return err
@@ -246,8 +275,8 @@ func (dfs *DesktopFS) Copy(node *trees.DirectoryNode, dst string, recursive bool
 		for _, fileNode := range node.Files {
 			fileDst := filepath.Join(dst, fileNode.Path)
 			if dryrun {
-				slog.Info(fmt.Sprintf("Dry run: moving %s to %s\n", fileNode.Path, dst))
-				return nil
+				log.Info().Msgf("Dry run: moving file %s to %s", fileNode.Path, fileDst)
+				continue
 			}
 			if err := dfs.copyFile(fileNode, fileDst, remove, dryrun); err != nil {
 				return err
@@ -255,7 +284,7 @@ func (dfs *DesktopFS) Copy(node *trees.DirectoryNode, dst string, recursive bool
 		}
 
 		// Optionally remove the original directory after copying
-		if remove {
+		if remove && !dryrun {
 			return os.RemoveAll(node.Path)
 		}
 		return nil
@@ -301,7 +330,7 @@ func (dfs *DesktopFS) copyFile(fileNode *trees.FileNode, dst string, remove bool
 func (dfs *DesktopFS) Move(node *trees.DirectoryNode, dst string, recursive bool, dryrun bool) error {
 
 	if dryrun {
-		slog.Info(fmt.Sprintf("Dry run: moving %s to %s\n", node.Path, dst))
+		log.Info().Msgf("Dry run: moving %s to %s\n", node.Path, dst)
 		return nil
 	}
 
@@ -309,7 +338,7 @@ func (dfs *DesktopFS) Move(node *trees.DirectoryNode, dst string, recursive bool
 	if err := os.Rename(node.Path, dst); err != nil {
 		// If we encounter a cross-device link error, fall back to copy and delete
 		if linkErr, ok := err.(*os.LinkError); ok && linkErr.Err == syscall.EXDEV {
-			slog.Warn(fmt.Sprintf("Cross-device error detected: falling back to copy for %s\n", node.Path))
+			log.Warn().Msgf("Cross-device error detected: falling back to copy for %s\n", node.Path)
 			if err := dfs.Copy(node, dst, recursive, true, dryrun); err != nil {
 				return fmt.Errorf("failed to copy file for cross-device move: %w", err)
 			}
@@ -321,7 +350,7 @@ func (dfs *DesktopFS) Move(node *trees.DirectoryNode, dst string, recursive bool
 	return nil
 }
 
-// MoveToTrash moves a file or directory to the trash (cache) directory
+// MoveToTrash moves a file or directory to the  trash (cache) directory
 func (dfs *DesktopFS) MoveToTrash(node *trees.DirectoryNode) error {
 	dst := filepath.Join(dfs.CacheDir, filepath.Base(node.Path))
 	return os.Rename(node.Path, dst)
@@ -329,12 +358,16 @@ func (dfs *DesktopFS) MoveToTrash(node *trees.DirectoryNode) error {
 
 // buildTreeAndCache recursively builds a directory tree and populates a cache
 func (dfs *DesktopFS) buildTreeAndCache(rootPath string, recursive bool, maxDepth int) error {
+	// Add deferred cleanup
+	defer func() {
+		if dfs.WorkspaceManager.centralDB.DirectoryTree != nil {
+			dfs.WorkspaceManager.centralDB.DirectoryTree.Cleanup()
+		}
+	}()
+
 	// Initialize the DirectoryTree and Cache
 	if dfs.WorkspaceManager.centralDB.DirectoryTree == nil {
-		newDirectoryTree, err := trees.NewDirectoryTree(rootPath)
-		if err != nil {
-			return fmt.Errorf("failed to create directory tree: %w", err)
-		}
+		newDirectoryTree := trees.NewDirectoryTree(trees.WithRoot(rootPath))
 		dfs.WorkspaceManager.centralDB.DirectoryTree = newDirectoryTree
 	}
 
@@ -406,82 +439,82 @@ func (dfs *DesktopFS) buildTreeNodes(node *trees.DirectoryNode, recursive bool, 
 }
 
 // traverseAndOrganize traverses the tree and organizes files based on the configuration
+// uses goroutines for concurrent processing with mutexes for thread safety
 func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.CancelFunc, node *trees.DirectoryNode, cfg *DeskFSConfig, params *FilePathParams, wg *sync.WaitGroup, errCh chan error) {
-	// Process each file within the directory
+	// Process files concurrently without a coarse-grained mutex
 	for _, fileNode := range node.Files {
 		wg.Add(1)
 		go func(fileNode *trees.FileNode) {
 			defer wg.Done()
 
-			// Respect context cancellation
+			// Check for cancellation
 			select {
 			case <-ctx.Done():
 				return
 			default:
 			}
 
-			// Determine the target folder based on file extension
+			// Determine target folder without locking (no shared variable access)
 			targetDir, found := dfs.determineTargetFolder(ctx, fileNode, cfg)
 			if !found {
-				slog.Warn(fmt.Sprintf("Skipping file %s as no target path found\n", fileNode.Name))
-				return // Skip files without a target folder
+				slog.Warn(fmt.Sprintf("Skipping file %s as no target path found", fileNode.Name))
+				return
 			}
 
-			// Construct the correct destination directory and path
+			// Construct destination paths
 			destDir := filepath.Join(params.TargetDir, targetDir)
-			slog.Debug(fmt.Sprintf("Creating directory: %s\n", destDir))
-			destPath := filepath.Join(destDir, filepath.Base(fileNode.Path)) // Only the base name
-			slog.Debug(fmt.Sprintf("Moving file %s to %s\n", fileNode.Path, destPath))
-
-			// Check if the target file already exists
-			if _, err := os.Stat(destPath); err == nil {
-				switch params.ConflictResolution {
-				case Overwrite:
-					slog.Info(fmt.Sprintf("Overwriting existing file: %s\n", destPath))
-				case Skip:
-					slog.Info(fmt.Sprintf("Skipping file to avoid conflict: %s\n", destPath))
-					return // Skip this file
-				case RenameSuffix:
-					destPath = generateUniqueFilename(destPath)
-					slog.Info(fmt.Sprintf("Renaming file to avoid conflict: %s\n", destPath))
-				default:
-					slog.Info(fmt.Sprintf("Unknown conflict resolution type: %s\n", params.ConflictResolution))
-					return
-				}
-			}
-
-			slog.Info(fmt.Sprintf("Moving file %s to %s\n", fileNode.Path, destPath))
-
-			// Ensure target directory exists before moving or copying files
+			// Ensure target directory exists
 			if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
 				select {
 				case errCh <- fmt.Errorf("failed to create target directory %s: %w", destDir, err):
-					cancel() // Cancel all ongoing operations
+					cancel()
 				default:
 				}
 				return
 			}
 
+			destPath := filepath.Join(destDir, filepath.Base(fileNode.Path))
+			// Check for conflict without holding a lock
+			if _, err := os.Stat(destPath); err == nil {
+				switch params.ConflictResolution {
+				case Overwrite:
+					slog.Info(fmt.Sprintf("Overwriting existing file: %s", destPath))
+				case Skip:
+					slog.Info(fmt.Sprintf("Skipping file to avoid conflict: %s", destPath))
+					return
+				case RenameSuffix:
+					destPath = generateUniqueFilename(destPath)
+					slog.Info(fmt.Sprintf("Renaming file to avoid conflict: %s", destPath))
+				default:
+					slog.Info(fmt.Sprintf("Unknown conflict resolution type: %s, skipping file %s", params.ConflictResolution, fileNode.Path))
+					return
+				}
+			}
+
+			slog.Info(fmt.Sprintf("Moving file %s to %s", fileNode.Path, destPath))
 			// Copy or move the file based on params
 			var fileErr error
 			if params.CopyFiles {
 				fileErr = dfs.copyFile(fileNode, destPath, params.RemoveAfter, params.DryRun)
 			} else {
-				fileErr = dfs.Move(&trees.DirectoryNode{Path: fileNode.Path}, destPath, false, params.DryRun)
-			}
-			// Send error to errCh and cancel context on first failure
-			if fileErr != nil {
-				select {
-				case errCh <- fmt.Errorf("file operation failed: %w", fileErr):
-					cancel() // Cancel all ongoing operations
-				default:
-				}
+				// For moving, construct a DirectoryNode with file path
+				dummyNode := &trees.DirectoryNode{Path: fileNode.Path}
+				fileErr = dfs.Move(dummyNode, destPath, false, params.DryRun)
 			}
 
+			if fileErr != nil {
+				slog.Error(fmt.Sprintf("Error moving file %s: %v", fileNode.Path, fileErr))
+				select {
+				case errCh <- fmt.Errorf("file operation failed for %s: %w", fileNode.Path, fileErr):
+					cancel()
+				default:
+				}
+				return
+			}
 		}(fileNode)
 	}
 
-	// Process each child directory
+	// Process child directories recursively
 	for _, childDir := range node.Children {
 		if params.Recursive {
 			dfs.traverseAndOrganize(ctx, cancel, childDir, cfg, params, wg, errCh)
@@ -560,7 +593,7 @@ func findDesktopCleaner(baseDir string) string {
 	var dir string
 	const devEnv = "development"
 	const prodEnv = "production"
-	const folderName = ".desktop-cleaner"
+	const folderName = ".file4you"
 	const env = "DESKTOP_CLEANER_ENV"
 
 	envValue, envSet := os.LookupEnv(env)

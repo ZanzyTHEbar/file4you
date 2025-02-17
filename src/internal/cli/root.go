@@ -1,5 +1,5 @@
 /*
-Copyright © 2024 DaOfficialWizard pyr0ndet0s97@gmail.com
+Copyright © 2024 DaOfficialWizard zacariahheim@gmail.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +22,10 @@ THE SOFTWARE.
 package cli
 
 import (
+	"fmt"
+
+	"file4you/internal"
+
 	"github.com/ZanzyTHEbar/go-basetools/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -42,9 +46,9 @@ func NewRootCMD(params *CmdParams) *RootCMD {
 func NewRoot(params *CmdParams) *cobra.Command {
 	// rootCmd represents the base command when called without any subcommands
 	rootCmd := &cobra.Command{
-		Use:     "desktop-cleaner [command] [flags]",
-		Aliases: []string{"dcx"},
-		Short:   "DesktopCleaner is a tool to automate the clean up of a specified directory",
+		Use:     fmt.Sprintf("%s", internal.DefaultAppName),
+		Aliases: []string{internal.DefaultAppCMDShortCut},
+		Short:   fmt.Sprintf("%s is a tool to intelligently automate filing and directory organization", internal.DefaultAppName),
 	}
 
 	// Validate palette
@@ -55,7 +59,7 @@ func NewRoot(params *CmdParams) *cobra.Command {
 	// Add commands to the root
 	rootCmd.AddCommand(params.Palette...)
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/.desktop_cleaner/.desktop_cleaner.toml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", fmt.Sprintf("config file (default %s)", internal.DefaultGlobalConfigFile))
 
 	viper.AutomaticEnv() // read in environment variables that match
 

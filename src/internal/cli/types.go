@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"desktop-cleaner/internal/db"
-	"desktop-cleaner/internal/deskfs"
-	"desktop-cleaner/internal/terminal"
+	"file4you/internal/db"
+	"file4you/internal/deskfs"
+	"file4you/internal/terminal"
 
 	"github.com/spf13/cobra"
 )
@@ -15,12 +15,12 @@ type CmdParams struct {
 	CentralDB *db.CentralDBProvider
 }
 
-type DesktopCleanerCMD struct {
+type File4YouCMD struct {
 	Root *cobra.Command
 }
 
-func NewDesktopCleanerCMD(cmdRoot *cobra.Command) *DesktopCleanerCMD {
-	return &DesktopCleanerCMD{
+func NewFile4YouCMD(cmdRoot *cobra.Command) *File4YouCMD {
+	return &File4YouCMD{
 		Root: cmdRoot,
 	}
 }

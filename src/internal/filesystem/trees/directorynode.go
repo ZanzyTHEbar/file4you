@@ -2,15 +2,9 @@ package trees
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/google/uuid"
-)
-
-type NodeType int
-
-const (
-	Directory NodeType = iota
-	File
 )
 
 // FileNode represents a file with metadata
@@ -65,10 +59,13 @@ func NewDirectoryNode(path string, parent *DirectoryNode) *DirectoryNode {
 }
 
 // AddChildDirectory adds a child directory to the current directory
-func (directorynode *DirectoryNode) AddChildDirectory(path string) *DirectoryNode {
+func (directorynode *DirectoryNode) AddChildDirectory(path string) (*DirectoryNode, error) {
+	if path == "" {
+		return nil, fmt.Errorf("directory path cannot be empty")
+	}
 	child := NewDirectoryNode(path, directorynode)
 	directorynode.Children = append(directorynode.Children, child)
-	return child
+	return child, nil
 }
 
 // AddFile adds a file to the current directory

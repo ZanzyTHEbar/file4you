@@ -1,7 +1,7 @@
 package cli_util
 
 import (
-	"desktop-cleaner/internal/cli"
+	"file4you/internal/cli"
 
 	"github.com/spf13/cobra"
 )

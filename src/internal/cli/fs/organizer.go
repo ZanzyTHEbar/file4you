@@ -1,8 +1,8 @@
 package fs
 
 import (
-	"desktop-cleaner/internal/cli"
-	deskfs "desktop-cleaner/internal/deskfs"
+	"file4you/internal/cli"
+	deskfs "file4you/internal/deskfs"
 	"os"
 
 	"github.com/spf13/cobra"

@@ -1,7 +1,7 @@
 package git
 
 import (
-	"desktop-cleaner/internal/cli"
+	"file4you/internal/cli"
 	"fmt"
 
 	"github.com/spf13/cobra"

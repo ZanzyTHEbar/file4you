@@ -3,8 +3,8 @@ package terminal
 import (
 	"archive/tar"
 	"compress/gzip"
-	"desktop-cleaner/version"
 	"errors"
+	"file4you/version"
 	"fmt"
 	"io"
 	"io/fs"

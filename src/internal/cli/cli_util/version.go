@@ -1,8 +1,8 @@
 package cli_util
 
 import (
-	"desktop-cleaner/internal/cli"
-	"desktop-cleaner/version"
+	"file4you/internal/cli"
+	"file4you/version"
 	"fmt"
 	"os/exec"
 

@@ -2,7 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"desktop-cleaner/internal/filesystem/trees"
+	"file4you/internal/filesystem/trees"
 	"fmt"
 	"log/slog"
 	"os"

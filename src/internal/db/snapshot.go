@@ -1,8 +1,8 @@
 package db
 
 import (
-	"desktop-cleaner/internal/filesystem/trees"
 	"encoding/json"
+	"file4you/internal/filesystem/trees"
 	"fmt"
 	"time"
 

@@ -7,7 +7,9 @@ import (
 
 var (
 	// DefaultConfigPath is the default path to the config file
-	DefaultConfigFolderName    = "desktop_cleaner"
+	DefaultAppName             = "file4you"
+	DefaultAppCMDShortCut      = "f4u"
+	DefaultConfigFolderName    = DefaultAppName
 	DefaultConfigPath          = filepath.Join(os.Getenv("HOME"), ".config", DefaultConfigFolderName)
 	DefaultCacheDir            = filepath.Join(DefaultConfigPath, ".cache")
 	DefaultCentralDBPath       = filepath.Join(DefaultConfigPath, "central.db")

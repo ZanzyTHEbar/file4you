@@ -2,7 +2,7 @@
 BUILD_FLAGS := -v
 
 # Binary name
-BINARY_NAME = desktop-cleaner-
+BINARY_NAME = file4you-
 #BINARY_NAME := $(BINARY_NAME)$(shell date +'%Y%m%d%H%M%S')-
 BINARY_PATH_PREFIX := ./bin
 
@@ -31,7 +31,7 @@ else
 BINARY_PATH := $(BINARY_PATH_PREFIX)$(BINARY_PATH)/$(BINARY_NAME)
 endif
 
-MODULE_PATH := cmd/app/desktop-cleaner.go
+MODULE_PATH := cmd/app/file4you.go
 
 # Default target
 .DEFAULT_GOAL := build
@@ -71,7 +71,7 @@ run:
 
 bin:
 	@echo "Running binary..."
-	@./bin/desktop-cleaner-linuxamd64/./desktop-cleaner
+	@./bin/file4you-linuxamd64/./file4you
 
 # Test the application
 test:

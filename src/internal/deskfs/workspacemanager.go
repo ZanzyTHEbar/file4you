@@ -2,8 +2,8 @@ package deskfs
 
 import (
 	"context"
-	"desktop-cleaner/internal"
-	"desktop-cleaner/internal/db"
+	"file4you/internal"
+	"file4you/internal/db"
 	"fmt"
 	"log/slog"
 	"os"

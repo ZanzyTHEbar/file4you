@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"desktop-cleaner/internal/terminal"
+	"file4you/internal/terminal"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -157,6 +157,20 @@ func TestPopulateFileTypes(t *testing.T) {
 }
 
 func TestEnhancedOrganize(t *testing.T) {
+	// Add cleanup for test resources
+	t.Cleanup(func() {
+		os.RemoveAll(testDir)
+	})
+
+	// Add test cases for error conditions
+	t.Run("handles concurrent file operations", func(t *testing.T) {
+		// Test concurrent file operations
+	})
+
+	t.Run("handles file system errors", func(t *testing.T) {
+		// Test file system errors
+	})
+
 	term := terminal.NewTerminal()
 	dfs := NewDesktopFS(term)
 

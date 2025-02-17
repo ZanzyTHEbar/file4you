@@ -1,14 +1,14 @@
 package main
 
 import (
-	"desktop-cleaner/internal/cli"
-	"desktop-cleaner/internal/cli/cli_util"
-	"desktop-cleaner/internal/cli/fs"
-	"desktop-cleaner/internal/cli/git"
-	"desktop-cleaner/internal/cli/workspace"
-	"desktop-cleaner/internal/db"
-	"desktop-cleaner/internal/deskfs"
-	"desktop-cleaner/internal/terminal"
+	"file4you/internal/cli"
+	"file4you/internal/cli/cli_util"
+	"file4you/internal/cli/fs"
+	"file4you/internal/cli/git"
+	"file4you/internal/cli/workspace"
+	"file4you/internal/db"
+	"file4you/internal/deskfs"
+	"file4you/internal/terminal"
 	"fmt"
 	"log/slog"
 	"os"
@@ -52,12 +52,12 @@ func main() {
 func generatePalette(params *cli.CmdParams) []*cobra.Command {
 
 	rewindCmd := git.NewRewind(params)
-	rewind := cli.NewDesktopCleanerCMD(rewindCmd).Root
-	helpUtil := cli.NewDesktopCleanerCMD(cli_util.NewHelp(params)).Root
-	versionUtil := cli.NewDesktopCleanerCMD(cli_util.NewVersion(params)).Root
-	upgradeUtil := cli.NewDesktopCleanerCMD(cli_util.NewUpgrade(params)).Root
-	organize := cli.NewDesktopCleanerCMD(fs.NewOrganize(params)).Root
-	workspace := cli.NewDesktopCleanerCMD(workspace.NewWorkspace(params)).Root
+	rewind := cli.NewFile4YouCMD(rewindCmd).Root
+	helpUtil := cli.NewFile4YouCMD(cli_util.NewHelp(params)).Root
+	versionUtil := cli.NewFile4YouCMD(cli_util.NewVersion(params)).Root
+	upgradeUtil := cli.NewFile4YouCMD(cli_util.NewUpgrade(params)).Root
+	organize := cli.NewFile4YouCMD(fs.NewOrganize(params)).Root
+	workspace := cli.NewFile4YouCMD(workspace.NewWorkspace(params)).Root
 
 	// Add commands here
 	return []*cobra.Command{

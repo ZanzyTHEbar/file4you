@@ -1,8 +1,8 @@
-# **Design Document: Enhanced `desktop-cleaner` CLI Tool**
+# **Design Document: Enhanced `file4you` CLI Tool**
 
 ### **Project Overview**
 
-The `desktop-cleaner` CLI tool is designed to organize files and folders in a specified directory based on a user-provided configuration map that maps file extensions to folder names. This enhanced version includes LLM (Large Language Model) integration for generating and reviewing configuration maps and a suite of additional user-focused features for a more interactive, flexible, and powerful file management experience.
+The `file4you` CLI tool is designed to organize files and folders in a specified directory based on a user-provided configuration map that maps file extensions to folder names. This enhanced version includes LLM (Large Language Model) integration for generating and reviewing configuration maps and a suite of additional user-focused features for a more interactive, flexible, and powerful file management experience.
 
 ---
 
@@ -38,7 +38,7 @@ The `desktop-cleaner` CLI tool is designed to organize files and folders in a sp
 
 ### **3.1 Core Architecture**
 
-The `desktop-cleaner` tool will follow a **Ports and Adapters (Hexagonal Architecture)** pattern, with an `LLMService` interface as the primary port and provider-specific adapters for each LLM model.
+The `file4you` tool will follow a **Ports and Adapters (Hexagonal Architecture)** pattern, with an `LLMService` interface as the primary port and provider-specific adapters for each LLM model.
 
 ### **3.2 High-Level Components**
 
@@ -91,7 +91,7 @@ The `desktop-cleaner` tool will follow a **Ports and Adapters (Hexagonal Archite
 #### 4.2.3 Scheduled Cleanup
 
 - **Description**: Allow users to schedule cleanups that run in the background at specified intervals.
-- **Implementation**: Integrate with system scheduling (e.g., cron for Linux/MacOS) to run `desktop-cleaner` at set intervals.
+- **Implementation**: Integrate with system scheduling (e.g., cron for Linux/MacOS) to run `file4you` at set intervals.
 - **Interaction**: Configured with a scheduling flag and interval (e.g., `--schedule daily`).
 
 #### 4.2.4 Detailed Logging and Usage Statistics

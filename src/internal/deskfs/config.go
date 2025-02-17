@@ -2,8 +2,8 @@ package deskfs
 
 import (
 	"context"
-	"desktop-cleaner/internal"
-	"desktop-cleaner/internal/filesystem/trees"
+	"file4you/internal"
+	"file4you/internal/filesystem/trees"
 	"fmt"
 	"log/slog"
 	"os"
@@ -48,6 +48,10 @@ func NewIntermediateConfig(optionalPath string) *IntermediateConfig {
 
 	// Step 1: Determine the configuration file path
 	if optionalPath != "" {
+		if _, err := os.Stat(optionalPath); err != nil {
+			slog.Error(fmt.Sprintf("Invalid optional path provided: %v", err))
+			return nil
+		}
 		configPath = optionalPath
 	}
 
@@ -96,7 +100,7 @@ func NewIntermediateConfig(optionalPath string) *IntermediateConfig {
 		// Decode configuration file into IntermediateConfig
 		if _, err := toml.DecodeFile(configPath, &defaultConfig); err != nil {
 			slog.Error(fmt.Sprintf("Error decoding config file to struct: %v", err))
-			return nil
+			return &IntermediateConfig{} // Return default config instead of nil
 		}
 	}
 

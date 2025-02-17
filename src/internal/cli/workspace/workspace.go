@@ -1,7 +1,7 @@
 package workspace
 
 import (
-	"desktop-cleaner/internal/cli"
+	"file4you/internal/cli"
 	"fmt"
 	"os"
 

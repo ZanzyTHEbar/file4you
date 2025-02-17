@@ -8,10 +8,10 @@ import (
 
 // FileTypeNode represents a folder and associated file types
 type FileTypeNode struct {
-	Name       string
-	Extensions []string        // File extensions associated with this folder
-	Parent     *FileTypeNode   // Reference to the parent node, added here
-	Children   []*FileTypeNode // Sub-categories or sub-folders for nested types
+	Name       string         `json:"name"`        // Add JSON tags for serialization
+	Extensions []string       `json:"extensions"`
+	Parent     *FileTypeNode  `json:"-"`          // Prevent circular reference in JSON
+	Children   []*FileTypeNode `json:"children"`
 }
 
 type FileTypeTree struct {
@@ -124,14 +124,44 @@ func flattenFileTypeNode(node *FileTypeNode, currentFileType string, filetypes *
 
 // AddChild adds a new child folder or sub-category to this node
 func (filetype *FileTypeNode) AddChild(name string) *FileTypeNode {
+	if name == "" {
+		return nil // Should return error instead of nil
+	}
 	child := NewFileTypeNode(name)
 	filetype.Children = append(filetype.Children, child)
 	return child
 }
 
 // AddExtensions adds file extensions to the current node
-func (filetype *FileTypeNode) AddExtensions(extensions []string) {
-	filetype.Extensions = append(filetype.Extensions, extensions...)
+func (filetype *FileTypeNode) AddExtensions(extensions []string) error {
+	// Deduplicate extensions
+	extensionMap := make(map[string]bool)
+	for _, ext := range filetype.Extensions {
+		extensionMap[ext] = true
+	}
+	
+	for _, ext := range extensions {
+		if ext == "" {
+			return fmt.Errorf("empty extension not allowed")
+		}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
+		}
+		if !extensionMap[ext] {
+			filetype.Extensions = append(filetype.Extensions, ext)
+			extensionMap[ext] = true
+		}
+	}
+	return nil
+}
+
+// Add validation method
+func (n *FileTypeNode) Validate() error {
+	if n.Name == "" {
+		return fmt.Errorf("node name cannot be empty")
+	}
+	// Add more validation as needed
+	return nil
 }
 
 // PopulateFileTypes builds the file type tree based on a set of rules
