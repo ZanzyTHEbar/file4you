@@ -4,6 +4,9 @@ File4You is a powerful digital filing assistant designed to streamline & optimiz
 
 ## Development
 
+> [!NOTE]\
+> LLM implementation is still a WIP, this ability has not been merged into main yet. Check back frequently. This is a live-updated project.
+
 - [x] Add support for config file
 - [x] Add support for custom file types
 - [x] Add support for custom folders
