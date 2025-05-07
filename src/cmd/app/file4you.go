@@ -20,22 +20,28 @@ func main() {
 	// Setup the Dependancy Injection
 
 	term := terminal.NewTerminal()
+	// Create the CobraInteractor, which implements the ui.Interactor interface
+	interactor := cli.NewCobraInteractor(term)
 
 	// Initialize the Central Database
 	centralDB, err := db.NewCentralDBProvider()
 	if err != nil {
+		// Use interactor for fatal errors if it's already initialized and makes sense
+		// For early init errors, slog or direct stderr might still be appropriate
 		slog.Error("Failed to initialize central database:", "msg", err)
 		os.Exit(1)
 	}
-
-	deskFS := deskfs.NewDesktopFS(term, centralDB)
+	// DeskFS might also need the interactor if it performs UI operations directly
+	// Or, its methods should return errors/data to be handled by the caller (command/flow)
+	deskFS := deskfs.NewDesktopFS(term, centralDB) // Consider if deskFS needs interactor
 	defer centralDB.Close()
 
 	// Setup the Root Command
+	// CmdParams now takes ui.Interactor
 	rootParams := &cli.CmdParams{
-		Term:      term,
-		DeskFS:    deskFS,
-		CentralDB: centralDB,
+		Interactor: interactor,
+		DeskFS:     deskFS,
+		CentralDB:  centralDB,
 	}
 
 	palette := generatePalette(rootParams)
@@ -44,8 +50,10 @@ func main() {
 	rootCmd := cli.NewRootCMD(rootParams)
 
 	if err := rootCmd.Root.Execute(); err != nil {
-		term.OutputErrorAndExit("Error executing root command: %v", err)
+		// Use the interactor for displaying the final execution error
+		interactor.Error("Error executing root command", err)
 		slog.Error(fmt.Sprintf("Error executing root command: %v", err.Error()))
+		os.Exit(1) // Interactor.Fatal could also be used if it calls os.Exit
 	}
 }
 
@@ -53,11 +61,14 @@ func generatePalette(params *cli.CmdParams) []*cobra.Command {
 
 	rewindCmd := git.NewRewind(params)
 	rewind := cli.NewFile4YouCMD(rewindCmd).Root
+
 	helpUtil := cli.NewFile4YouCMD(cli_util.NewHelp(params)).Root
 	versionUtil := cli.NewFile4YouCMD(cli_util.NewVersion(params)).Root
 	upgradeUtil := cli.NewFile4YouCMD(cli_util.NewUpgrade(params)).Root
 	organize := cli.NewFile4YouCMD(fs.NewOrganize(params)).Root
-	workspace := cli.NewFile4YouCMD(workspace.NewWorkspace(params)).Root
+	workspaceCmd := workspace.NewWorkspace(params)
+	ws := cli.NewFile4YouCMD(workspaceCmd).Root
+	greetCmd := cli_util.NewGreetCmd(params) // Added Greet command
 
 	// Add commands here
 	return []*cobra.Command{
@@ -66,6 +77,7 @@ func generatePalette(params *cli.CmdParams) []*cobra.Command {
 		versionUtil,
 		upgradeUtil,
 		organize,
-		workspace,
+		ws,
+		greetCmd, // Added Greet command to palette
 	}
 }

@@ -25,6 +25,9 @@ import (
 	"fmt"
 
 	"file4you/internal"
+	"file4you/internal/cli/cli_util" // Added for NewGreetCmd
+
+	// "file4you/internal/ui" // Removed as it was unused
 
 	"github.com/ZanzyTHEbar/go-basetools/logger"
 	"github.com/spf13/cobra"
@@ -56,16 +59,29 @@ func NewRoot(params *CmdParams) *cobra.Command {
 		params.Palette = []*cobra.Command{}
 	}
 
+	// Add greet command to the palette
+	params.Palette = append(params.Palette, cli_util.NewGreetCmd(params))
+
 	// Add commands to the root
 	rootCmd.AddCommand(params.Palette...)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", fmt.Sprintf("config file (default %s)", internal.DefaultGlobalConfigFile))
 
-	viper.AutomaticEnv() // read in environment variables that match
+	cobra.OnInitialize(func() {
+		params.DeskFS.InitConfig(cfgFile)                       // InitConfig does not return a value
+		logger.InitLogger(&params.DeskFS.InstanceConfig.Config) // Assuming this uses viper instance from DeskFS
+		// If InitConfig or InitLogger need to output errors/info, they should use params.Interactor
+		// For example, if InitConfig were to return an error:
+		// err := params.DeskFS.InitConfig(cfgFile, params.Interactor)
+		// if err != nil {
+		// 	 params.Interactor.Fatal("Failed to initialize configuration", err)
+		// }
+	})
 
-	params.DeskFS.InitConfig(cfgFile)
-
-	logger.InitLogger(&params.DeskFS.InstanceConfig.Config)
+	vip := viper.New() // This viper instance seems distinct from the one InitConfig might use.
+	// If DeskFS.InitConfig uses the global viper.Get() or a shared instance, this might be redundant or conflicting.
+	// Consider whether this viper instance is needed or if DeskFS.InstanceConfig.Config already provides necessary viper access.
+	vip.AutomaticEnv() // read in environment variables that match
 
 	return rootCmd
 }

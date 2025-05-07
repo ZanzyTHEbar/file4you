@@ -3,16 +3,16 @@ package cli
 import (
 	"file4you/internal/db"
 	"file4you/internal/deskfs"
-	"file4you/internal/terminal"
+	"file4you/internal/ui" // New import
 
 	"github.com/spf13/cobra"
 )
 
 type CmdParams struct {
-	Term      *terminal.Terminal
-	DeskFS    *deskfs.DesktopFS
-	Palette   []*cobra.Command
-	CentralDB *db.CentralDBProvider
+	Interactor ui.Interactor // New field
+	DeskFS     *deskfs.DesktopFS
+	Palette    []*cobra.Command
+	CentralDB  *db.CentralDBProvider
 }
 
 type File4YouCMD struct {
