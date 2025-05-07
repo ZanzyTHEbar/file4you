@@ -1,11 +1,12 @@
 package deskfs
 
 import (
-	"context"
+	// "context" // No longer used
 	"file4you/internal"
 	"file4you/internal/filesystem/trees"
+	"file4you/internal/ui" // Added for Interactor
 	"fmt"
-	"log/slog"
+	"log/slog" // Keep for internal/debug logging not directly for user UI
 	"os"
 	"path/filepath"
 
@@ -32,80 +33,127 @@ type IntermediateConfig struct {
 	CacheDir  string              `toml:"cache_dir"`
 }
 
-func CreateDirIfNotExist(path string) {
+func CreateDirIfNotExist(path string, interactor ui.Interactor) { // Added Interactor
 	// Create the directory if it doesn't exist
 	if _, err := os.Stat(filepath.Dir(path)); os.IsNotExist(err) {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			slog.Info(fmt.Sprintf("Path %s: %v", filepath.Dir(path), err))
+			// slog.Info(fmt.Sprintf("Path %s: %v", filepath.Dir(path), err)) // Internal log
 			errMsg := fmt.Sprintf("Error creating directory at %s", filepath.Dir(path))
-			ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error)
+			// ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error) // Internal assert
+			if interactor != nil {
+				interactor.Error(errMsg, err)
+			} else {
+				slog.Error(errMsg, "error", err) // Fallback if no interactor
+			}
 		}
 	}
 }
 
-func NewIntermediateConfig(optionalPath string) *IntermediateConfig {
+func NewIntermediateConfig(optionalPath string, interactor ui.Interactor) *IntermediateConfig { // Added Interactor
 	var configPath string
 
 	// Step 1: Determine the configuration file path
 	if optionalPath != "" {
 		if _, err := os.Stat(optionalPath); err != nil {
-			slog.Error(fmt.Sprintf("Invalid optional path provided: %v", err))
-			return nil
+			if interactor != nil {
+				interactor.Warning(fmt.Sprintf("Invalid optional config path provided: %s. Error: %v", optionalPath, err))
+			} else {
+				slog.Warn(fmt.Sprintf("Invalid optional config path provided: %s. Error: %v", optionalPath, err))
+			}
+			// Decide on fallback behavior: return nil, use default, or attempt to create?
+			// For now, let's try to proceed to default global config if optional is bad.
+			optionalPath = "" // Clear it so it falls through to default logic
 		}
 		configPath = optionalPath
 	}
 
-	if _, err := os.Stat(configPath); err == nil {
-		slog.Warn(fmt.Sprintf("Optional path provided: %s\n", optionalPath))
-	} else if os.Stat(internal.DefaultWorkspaceConfigFile); err == nil {
-		slog.Warn(fmt.Sprintf("Config file found: %s\n", internal.DefaultWorkspaceConfigFile))
-		configPath = optionalPath
+	// Fallback logic if optionalPath was not provided or was invalid
+	if configPath == "" {
+		if _, err := os.Stat(internal.DefaultWorkspaceConfigFile); err == nil {
+			configPath = internal.DefaultWorkspaceConfigFile
+			if interactor != nil {
+				interactor.Info(fmt.Sprintf("Using workspace config file: %s", configPath))
+			} else {
+				slog.Info(fmt.Sprintf("Using workspace config file: %s", configPath))
+			}
+		} else {
+			configPath = internal.DefaultGlobalConfigFile
+			if interactor != nil {
+				interactor.Info(fmt.Sprintf("Using global config file: %s", configPath))
+			} else {
+				slog.Info(fmt.Sprintf("Using global config file: %s", configPath))
+			}
+		}
 	} else {
-		slog.Warn(fmt.Sprintf("Config file found: %s\n", internal.DefaultGlobalConfigFile))
-		configPath = internal.DefaultGlobalConfigFile
+		if interactor != nil {
+			interactor.Info(fmt.Sprintf("Using specified config file: %s", configPath))
+		} else {
+			slog.Info(fmt.Sprintf("Using specified config file: %s", configPath))
+		}
 	}
-
-	slog.Info(fmt.Sprintf("Config path: %s\n", configPath))
 
 	var defaultConfig IntermediateConfig
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		defaultConfig = getDefaultConfig()
-		slog.Info(fmt.Sprintf("\nPath %s: %v", filepath.Dir(configPath), err))
-		CreateDirIfNotExist(filepath.Dir(configPath))
-		file, err := os.Create(configPath)
-		if err != nil {
-			slog.Error(fmt.Sprintf("Error creating default config file: %v", err))
-			return nil
+		if interactor != nil {
+			interactor.Info(fmt.Sprintf("Config file not found at %s. Creating default config.", configPath))
+		} else {
+			slog.Info(fmt.Sprintf("Config file not found at %s. Creating default config.", configPath))
+		}
+		CreateDirIfNotExist(filepath.Dir(configPath), interactor)
+		file, err_create := os.Create(configPath)
+		if err_create != nil {
+			if interactor != nil {
+				interactor.Error(fmt.Sprintf("Error creating default config file at %s", configPath), err_create)
+			} else {
+				slog.Error(fmt.Sprintf("Error creating default config file at %s: %v", configPath, err_create))
+			}
+			return nil // Or a default in-memory config
 		}
 		defer file.Close()
 
 		encoder := toml.NewEncoder(file)
-		if err := encoder.Encode(defaultConfig); err != nil {
-			slog.Error(fmt.Sprintf("Error writing default config file: %v", err))
-			return nil
+		if err_encode := encoder.Encode(defaultConfig); err_encode != nil {
+			if interactor != nil {
+				interactor.Error(fmt.Sprintf("Error writing default config to %s", configPath), err_encode)
+			} else {
+				slog.Error(fmt.Sprintf("Error writing default config to %s: %v", configPath, err_encode))
+			}
+			return nil // Or a default in-memory config
 		}
-		slog.Info(fmt.Sprintf("Default config file created at %s", configPath))
+		if interactor != nil {
+			interactor.Success(fmt.Sprintf("Default config file created at %s", configPath))
+		} else {
+			slog.Info(fmt.Sprintf("Default config file created at %s", configPath))
+		}
 	} else {
-		// Step 3: Decode the existing config file
-		slog.Info(fmt.Sprintf("Loading config file from %s", configPath))
-		var tempConfig map[string]interface{}
-		if _, err := toml.DecodeFile(configPath, &tempConfig); err != nil {
-			slog.Error(fmt.Sprintf("Error decoding config file: %v", err))
-			return nil
+		if interactor != nil {
+			interactor.Info(fmt.Sprintf("Loading config file from %s", configPath))
+		} else {
+			slog.Info(fmt.Sprintf("Loading config file from %s", configPath))
 		}
+		// var tempConfig map[string]interface{} // Keep for debug if needed
+		// if _, err_decode_map := toml.DecodeFile(configPath, &tempConfig); err_decode_map != nil {
+		// 	slog.Error(fmt.Sprintf("Error decoding config file to map: %v", err_decode_map)) // Keep as slog for debug
+		// 	// return nil // Don't fail here, try to decode to struct
+		// }
+		// slog.Debug(fmt.Sprintf("TempConfig (raw): %+v\n", tempConfig)) // Keep as slog for debug
 
-		slog.Debug(fmt.Sprintf("TempConfig (raw): %+v\n", tempConfig))
-
-		// Decode configuration file into IntermediateConfig
-		if _, err := toml.DecodeFile(configPath, &defaultConfig); err != nil {
-			slog.Error(fmt.Sprintf("Error decoding config file to struct: %v", err))
-			return &IntermediateConfig{} // Return default config instead of nil
+		if _, err_decode_struct := toml.DecodeFile(configPath, &defaultConfig); err_decode_struct != nil {
+			if interactor != nil {
+				interactor.Error(fmt.Sprintf("Error decoding config file %s into struct", configPath), err_decode_struct)
+			} else {
+				slog.Error(fmt.Sprintf("Error decoding config file %s into struct: %v", configPath, err_decode_struct))
+			}
+			// Return a default config or handle error appropriately
+			// For now, returning an empty struct to avoid nil pointer, but signaling failure is important.
+			interactor.Warning("Returning empty default config due to decoding error.")
+			return &IntermediateConfig{} 
 		}
 	}
 
-	// Step 4: Confirm loaded config (case-sensitive)
-	slog.Debug(fmt.Sprintf("Loaded file_types (case-sensitive): %+v\n", defaultConfig.FileTypes))
+	slog.Debug(fmt.Sprintf("Loaded file_types (case-sensitive): %+v\n", defaultConfig.FileTypes)) // Keep as slog for debug
 
 	return &defaultConfig
 }

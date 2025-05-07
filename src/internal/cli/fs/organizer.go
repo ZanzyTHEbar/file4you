@@ -20,10 +20,12 @@ func NewOrganize(params *cli.CmdParams) *cobra.Command {
 		Aliases: []string{"o"},
 		Short:   "Organize files in the specified directory, based on the configuration",
 		Long:    `Organize files based on the configuration. Optionally specify a destination directory. If not provided, the current working directory is used.`,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
 			if err := organizeFiles(params); err != nil {
-				params.Term.OutputErrorAndExit("Error organizing files: %v", err)
+				// Error is handled within organizeFiles using params.Interactor
+				return err // Return error for Cobra to handle
 			}
+			return nil
 		},
 	}
 
@@ -48,7 +50,8 @@ func organizeFiles(params *cli.CmdParams) error {
 		var err error
 		fileParams.SourceDir, err = os.Getwd()
 		if err != nil {
-			params.Term.OutputErrorAndExit("Error getting current working directory: %v", err)
+			params.Interactor.Error("Error getting current working directory", err)
+			return err
 		}
 	}
 
@@ -56,29 +59,34 @@ func organizeFiles(params *cli.CmdParams) error {
 		fileParams.TargetDir = fileParams.SourceDir
 	}
 
-	params.Term.ToggleSpinner(true, "Organizing files...")
+	params.Interactor.StartSpinner("Organizing files...")
 
 	// Initialize Git if Git is enabled and repository is not already initialized
 	if fileParams.GitEnabled {
 		if !params.DeskFS.IsGitRepo(fileParams.SourceDir) {
-			params.Term.OutputInfo("Git operations enabled, but no Git repository detected. Initializing Git repository.")
+			params.Interactor.Info("Git operations enabled, but no Git repository detected. Initializing Git repository.")
 			if err := params.DeskFS.InitGitRepo(fileParams.SourceDir); err != nil {
-				params.Term.OutputErrorAndExit("Error initializing Git repository: %v", err)
+				params.Interactor.StopSpinner(false, "Git initialization failed.")
+				params.Interactor.Error("Error initializing Git repository", err)
+				return err
 			}
+			params.Interactor.Info("Git repository initialized successfully.")
 		} else {
-			params.Term.OutputInfo("Git repository detected.")
+			params.Interactor.Info("Git repository detected.")
 		}
 	} else {
-		params.Term.OutputWarning("Git operations disabled. Proceeding without Git.")
+		params.Interactor.Warning("Git operations disabled. Proceeding without Git.")
 	}
 
 	// Execute the organization logic with EnhancedOrganize
 	if err := params.DeskFS.EnhancedOrganize(params.DeskFS.InstanceConfig, fileParams); err != nil {
-		params.Term.OutputErrorAndExit("Error organizing files: %v", err)
+		params.Interactor.StopSpinner(false, "Organization failed.")
+		params.Interactor.Error("Error organizing files", err)
+		return err
 	}
 
-	params.Term.ToggleSpinner(false, "")
-	params.Term.OutputSuccess("Files organized successfully.")
+	params.Interactor.StopSpinner(true, "Files organized successfully.")
+	params.Interactor.Success("Organization complete.") // More concise success message
 
 	return nil
 }

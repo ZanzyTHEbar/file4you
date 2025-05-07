@@ -181,7 +181,7 @@ func (ci *CobraInteractor) StartSpinner(message string) {
 	if ci.activeSpinner != nil {
 		ci.activeSpinner.Stop()
 	}
-	// Assuming terminal.StartSpinner returns a spinner instance and takes a message
+	// TODO: Assuming terminal.StartSpinner returns a spinner instance and takes a message
 	// This part needs to align with how your terminal.StartSpinner works.
 	// For now, using github.com/briandowns/spinner as a placeholder.
 	// You'll need to integrate this with your existing terminal.Terminal
@@ -199,26 +199,98 @@ func (ci *CobraInteractor) StartSpinner(message string) {
 
 func (ci *CobraInteractor) StopSpinner(success bool, message string) {
 	if ci.activeSpinner == nil {
-		if message != "" { // If there was no spinner but a message is provided, just print it.
+		// If there's a message, print it even if spinner wasn't formally started by this interactor
+		if message != "" {
 			if success {
 				ci.Success(message)
 			} else {
-				ci.Error(message, nil)
+				ci.Error(message, nil) // Or Warning, depending on context
 			}
 		}
 		return
 	}
 
-	originalSuffix := ci.activeSpinner.Suffix
-	if success {
-		ci.activeSpinner.FinalMSG = ci.term.FormatMessage(terminal.StyleSuccess, "✔"+originalSuffix+" "+message+"
-")
-	} else {
-		ci.activeSpinner.FinalMSG = ci.term.FormatMessage(terminal.StyleError, "✖"+originalSuffix+" "+message+"
-")
+	if message != "" {
+		if success {
+			ci.activeSpinner.FinalMSG = ci.term.FormatMessage(terminal.StyleSuccess, "✔ ") + message + "\n"
+		} else {
+			ci.activeSpinner.FinalMSG = ci.term.FormatMessage(terminal.StyleError, "✖ ") + message + "\n"
+		}
 	}
+
+	if success {
+		// TODO: Optional: Change color or symbol on success before stopping
+		// ci.activeSpinner.Color("green") // Example if spinner supports color changes
+	}
+
 	ci.activeSpinner.Stop()
 	ci.activeSpinner = nil
+}
+
+// ShowCustomHelp implements the corresponding method in the Interactor interface.
+// It calls the terminal's PrintCustomHelp method.
+func (ci *CobraInteractor) ShowCustomHelp(showAll bool, commandPath string) {
+	// TODO: Assuming terminal.PrintCustomHelp is the function we want to call.
+	// It might need the root command or specific command to display relevant help.
+	// The original call was params.term.PrintCustomHelp(helpShowAll)
+	// We need to ensure ci.term has access to the necessary cobra.Command object
+	// or that PrintCustomHelp can function with just `showAll` and perhaps a command path string.
+
+	// TODO: If your terminal.PrintCustomHelp function is defined as:
+	// func (t *Terminal) PrintCustomHelp(showAll bool, cmd *cobra.Command, palette []*cobra.Command)
+	// then CobraInteractor needs access to the command and palette.
+	// This is a limitation of the current Interactor design if it doesn't pass commands through.
+
+	// For now, let's assume PrintCustomHelp can be called on the term instance
+	// and it handles how to get command info internally or via global state if necessary (less ideal).
+	// This is a simplification.
+	// A more robust way would be for `NewHelp` to pass the `*cobra.Command` to this method,
+	// requiring a change in the `ShowCustomHelp` signature in `ui.Interactor` and here.
+
+	// Placeholder: This simulates calling a method on the terminal instance.
+	// You will need to replace this with the actual call to your terminal's help function.
+	// For example, if your terminal package has a function `PrintHelp(term *terminal.Terminal, showAll bool, commandPath string)`:
+	// terminal.PrintHelp(ci.term, showAll, commandPath)
+
+	// Or if PrintCustomHelp is a method of ci.term:
+	// ci.term.PrintCustomHelp(showAll, commandPath) // Adjust signature as needed
+
+	// Based on the previous help.go, it seemed to use a global `CmdDesc` and `PrintCustomCmd`
+	// and a `PrintCustomHelp` that might iterate through commands.
+	// Let's try to replicate a simplified version of what `terminal.PrintCustomHelp` might do.
+
+	ci.Output("--- Custom Help ---")
+	if showAll {
+		ci.Info("Displaying all available commands (simulated):")
+		// TODO: In a real scenario, you'd iterate over registered commands.
+		// For example, if you have access to the root command:
+		// for _, cmd := range rootCmd.Commands() {
+		//    ci.Outputf("  %s - %s", cmd.Name(), cmd.Short)
+		// }
+		// Using the CmdDesc from terminal package as an example of what might be shown:
+		for cmd, details := range terminal.CmdDesc {
+			alias := ""
+			if details[0] != "" {
+				alias = fmt.Sprintf(" (alias: %s)", details[0])
+			}
+			ci.Outputf("  %s%s: %s", cmd, alias, details[1])
+		}
+	} else {
+		ci.Info(fmt.Sprintf("Displaying help for command: %s (simulated)", commandPath))
+		// Logic to display specific help for `commandPath`
+		// This might involve looking up the command and printing its Long field and usage.
+		details, ok := terminal.CmdDesc[commandPath] // This is a simplification
+		if ok {
+			ci.Outputf("  Description: %s", details[1])
+		} else {
+			ci.Warningf("No specific custom help available for %s. Try 'detailed_help --all'.", commandPath)
+		}
+	}
+	ci.Output("--- End Custom Help ---")
+	// The original call in help.go was: term.PrintCustomHelp(helpShowAll, cmd.Root())
+	// This indicates that PrintCustomHelp in the terminal package likely expects a *cobra.Command.
+	// To truly replicate this, CobraInteractor would need access to the command, or PrintCustomHelp
+	// would need to be refactored. The current implementation is a placeholder.
 }
 
 // Ensure CobraInteractor implements ui.Interactor

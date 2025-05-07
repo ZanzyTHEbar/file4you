@@ -42,5 +42,9 @@ type Interactor interface {
 	// message is an optional final message for the spinner.
 	StopSpinner(success bool, message string)
 
+	// ShowCustomHelp displays a custom help message.
+	// It might take parameters to customize the help output, e.g., showAll, command context.
+	ShowCustomHelp(showAll bool, commandPath string) // commandPath could be cmd.CommandPath()
+
 	// TODO: Add methods for tables, progress bars, etc. as needed.
 }

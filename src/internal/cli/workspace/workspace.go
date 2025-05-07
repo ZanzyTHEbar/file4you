@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/google/uuid" // Import for UUID parsing
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +19,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 		Aliases: []string{"ws"},
 		Short:   "Manage workspaces",
 		Long:    `Manage workspaces including creating, updating, and deleting workspaces.`,
+		// No RunE needed for a command group, subcommands will have it
 	}
 
 	// Subcommand: create
@@ -25,27 +27,31 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 		Use:   "create",
 		Short: "Create a new workspace",
 		Long:  `Create a new workspace with the specified root path and configuration. IF root-path is not provided, the current working directory is used.`,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
 			rootPath, _ := cmd.Flags().GetString("root-path")
 			config, _ := cmd.Flags().GetString("config")
 
 			if rootPath == "" {
-				params.Term.OutputWarning("Warn: root-path is required, using $(pwd)")
+				params.Interactor.Warning("root-path not provided, using current working directory.")
 				var err error
 				rootPath, err = os.Getwd()
 				if err != nil {
-					params.Term.OutputErrorAndExit("Error getting current working directory: %v", err)
+					params.Interactor.Error("Error getting current working directory", err)
+					return err
 				}
+				params.Interactor.Info(fmt.Sprintf("Using current directory: %s", rootPath))
 			}
 
 			workspaceID, err := params.DeskFS.WorkspaceManager.CreateWorkspace(rootPath, config)
 			if err != nil {
-				params.Term.OutputErrorAndExit("Error creating workspace: %v", err)
+				params.Interactor.Error("Error creating workspace", err)
+				return err
 			}
-			params.Term.OutputSuccess(fmt.Sprintf("Workspace created successfully with ID: %s", workspaceID))
+			params.Interactor.Success(fmt.Sprintf("Workspace created successfully with ID: %s", workspaceID))
+			return nil
 		},
 	}
-	createCmd.Flags().String("root-path", "", "Root path for the workspace (required)")
+	createCmd.Flags().String("root-path", "", "Root path for the workspace") // Removed (required) as it defaults
 	createCmd.Flags().String("config", "", "Configuration data for the workspace")
 
 	// Subcommand: update
@@ -53,46 +59,53 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 		Use:   "update",
 		Short: "Update an existing workspace",
 		Long:  `Update the configuration for an existing workspace by ID.`,
-		Run: func(cmd *cobra.Command, args []string) {
-			id, _ := cmd.Flags().GetInt("id")
+		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
+			idStr, _ := cmd.Flags().GetString("id")
 			config, _ := cmd.Flags().GetString("config")
 
-			// List the workspaces, and then update the workspace with the given ID
-			workspaces, err := params.DeskFS.WorkspaceManager.ListWorkspaces()
-			if err != nil {
-				params.Term.OutputErrorAndExit("Error listing workspaces: %v", err)
+			if idStr == "" {
+				params.Interactor.Error("Workspace ID is required for update", nil)
+				return fmt.Errorf("workspace ID is required")
 			}
 
-			// workspaces are already ordered by timestamp, so we can use the index as the ID
-			if id <= 0 {
-				params.Term.OutputErrorAndExit("Error: valid workspace ID is required")
-			}
-			// Subtract 1 from the ID to get the index
-			id--
-
-			err = params.DeskFS.WorkspaceManager.UpdateWorkspace(workspaces[id].ID, config)
+			workspaceUUID, err := uuid.Parse(idStr)
 			if err != nil {
-				params.Term.OutputErrorAndExit("Error updating workspace: %v", err)
+				params.Interactor.Error(fmt.Sprintf("Invalid Workspace ID format: '%s'", idStr), err)
+				return err
 			}
-			params.Term.OutputSuccess(fmt.Sprintf("Workspace with ID %d updated successfully", id))
+			
+			err = params.DeskFS.WorkspaceManager.UpdateWorkspace(workspaceUUID, config)
+			if err != nil {
+				params.Interactor.Error(fmt.Sprintf("Error updating workspace with ID %s", idStr), err)
+				return err
+			}
+			params.Interactor.Success(fmt.Sprintf("Workspace with ID %s updated successfully", idStr))
+			return nil
 		},
 	}
-	updateCmd.Flags().Int("id", 0, "ID of the workspace to update (required)")
+	updateCmd.Flags().String("id", "", "ID of the workspace to update (required)")
 	updateCmd.Flags().String("config", "", "New configuration data for the workspace")
 
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all workspaces",
 		Long:  `List all workspaces with their IDs and root paths.`,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
 			workspaces, err := params.DeskFS.WorkspaceManager.ListWorkspaces()
 			if err != nil {
-				params.Term.OutputErrorAndExit("Error listing workspaces: %v", err)
+				params.Interactor.Error("Error listing workspaces", err)
+				return err
 			}
-			params.Term.OutputSuccess("Workspaces:")
+			if len(workspaces) == 0 {
+				params.Interactor.Info("No workspaces found.")
+				return nil
+			}
+			params.Interactor.Output("Workspaces:")
 			for _, ws := range workspaces {
-				params.Term.OutputInfo(fmt.Sprintf("ID: %s, Root Path: %s", ws.ID, ws.RootPath))
+				// Assuming ws.ID is a string. If it's an int, adjust formatting.
+				params.Interactor.Outputf("  ID: %s, Root Path: %s", ws.ID.String(), ws.RootPath)
 			}
+			return nil
 		},
 	}
 
@@ -101,29 +114,45 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 		Use:   "delete",
 		Short: "Delete a workspace",
 		Long:  `Delete an existing workspace by its ID.`,
-		Run: func(cmd *cobra.Command, args []string) {
-			id, _ := cmd.Flags().GetInt("id")
+		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
+			idStr, _ := cmd.Flags().GetString("id")
 
-			// List the workspaces, and then update the workspace with the given ID
-			workspaces, err := params.DeskFS.WorkspaceManager.ListWorkspaces()
-			if err != nil {
-				params.Term.OutputErrorAndExit("Error listing workspaces: %v", err)
+			if idStr == "" {
+				params.Interactor.Error("Workspace ID is required for deletion", nil)
+				return fmt.Errorf("workspace ID is required")
 			}
 
-			// workspaces are already ordered by timestamp, so we can use the index as the ID
-			if id <= 0 {
-				params.Term.OutputErrorAndExit("Error: valid workspace ID is required")
-			}
-			// Subtract 1 from the ID to get the index
-			id--
-			err = params.DeskFS.WorkspaceManager.DeleteWorkspace(workspaces[id].ID)
+			workspaceUUID, err := uuid.Parse(idStr)
 			if err != nil {
-				params.Term.OutputErrorAndExit("Error deleting workspace: %v", err)
+				params.Interactor.Error(fmt.Sprintf("Invalid Workspace ID format: '%s'", idStr), err)
+				return err
 			}
-			params.Term.OutputSuccess(fmt.Sprintf("Workspace with ID %d deleted successfully", id))
+
+			confirmMsg := fmt.Sprintf("Are you sure you want to delete workspace '%s'? This action cannot be undone.", idStr)
+			confirmed, err := params.Interactor.Confirm(confirmMsg, false)
+			if err != nil {
+				params.Interactor.Error("Confirmation failed", err)
+				return err
+			}
+
+			if !confirmed {
+				params.Interactor.Info("Delete operation cancelled by user.")
+				return nil
+			}
+			
+			params.Interactor.StartSpinner(fmt.Sprintf("Deleting workspace %s...", idStr))
+			err = params.DeskFS.WorkspaceManager.DeleteWorkspace(workspaceUUID)
+			if err != nil {
+				params.Interactor.StopSpinner(false, "Deletion failed.")
+				params.Interactor.Error(fmt.Sprintf("Error deleting workspace with ID %s", idStr), err)
+				return err
+			}
+			params.Interactor.StopSpinner(true, "Deletion successful.")
+			params.Interactor.Success(fmt.Sprintf("Workspace with ID %s deleted successfully", idStr))
+			return nil
 		},
 	}
-	deleteCmd.Flags().Int("id", 0, "ID of the workspace to delete (required)")
+	deleteCmd.Flags().String("id", "", "ID of the workspace to delete (required)")
 
 	// Add subcommands to the workspace command
 	workspaceCmd.AddCommand(createCmd, updateCmd, deleteCmd, listCmd)

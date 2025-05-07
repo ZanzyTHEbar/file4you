@@ -16,10 +16,13 @@ func NewHelp(params *cli.CmdParams) *cobra.Command {
 	helpCmd := &cobra.Command{
 		Use:     "detailed_help",
 		Aliases: []string{"h"},
-		Short:   "Display help for DesktopCleaner",
-		Long:    `Display help for DesktopCleaner.`,
-		Run: func(cmd *cobra.Command, args []string) {
-			// TODO: params.term.PrintCustomHelp(helpShowAll)
+		Short:   "Display help for file4you", // Updated name
+		Long:    `Display help for file4you. Shows custom help information.`, // Updated name
+		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
+			// Call the new ShowCustomHelp method on the Interactor.
+			// cmd.CommandPath() provides a unique string for the command.
+			params.Interactor.ShowCustomHelp(helpShowAll, cmd.CommandPath())
+			return nil
 		},
 	}
 
