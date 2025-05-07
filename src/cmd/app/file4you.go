@@ -42,10 +42,15 @@ func main() {
 		Interactor: interactor,
 		DeskFS:     deskFS,
 		CentralDB:  centralDB,
+		// Genkit will be initialized in root.go's OnInitialize
 	}
 
-	palette := generatePalette(rootParams)
-	rootParams.Palette = palette
+	// It's important that the palette is assigned to rootParams.Palette
+	// *before* NewRootCMD is called, because NewRootCMD (specifically NewRoot)
+	// might iterate over this palette (e.g., to add commands).
+	// The Genkit initialization in OnInitialize will happen *after* NewRoot has run
+	// but *before* any command's RunE is executed.
+	rootParams.Palette = generatePalette(rootParams) 
 
 	rootCmd := cli.NewRootCMD(rootParams)
 
@@ -65,10 +70,12 @@ func generatePalette(params *cli.CmdParams) []*cobra.Command {
 	helpUtil := cli.NewFile4YouCMD(cli_util.NewHelp(params)).Root
 	versionUtil := cli.NewFile4YouCMD(cli_util.NewVersion(params)).Root
 	upgradeUtil := cli.NewFile4YouCMD(cli_util.NewUpgrade(params)).Root
+	backupUtil := cli.NewFile4YouCMD(cli_util.NewBackupCmd(params)).Root // Added Backup command
+	clearUtil := cli.NewFile4YouCMD(cli_util.NewClearCmd(params)).Root   // Added Clear command
 	organize := cli.NewFile4YouCMD(fs.NewOrganize(params)).Root
 	workspaceCmd := workspace.NewWorkspace(params)
 	ws := cli.NewFile4YouCMD(workspaceCmd).Root
-	greetCmd := cli_util.NewGreetCmd(params) // Added Greet command
+	greetCmd := cli_util.NewGreetCmd(params) 
 
 	// Add commands here
 	return []*cobra.Command{
@@ -76,8 +83,10 @@ func generatePalette(params *cli.CmdParams) []*cobra.Command {
 		helpUtil,
 		versionUtil,
 		upgradeUtil,
+		backupUtil, // Added Backup command to palette
+		clearUtil,  // Added Clear command to palette
 		organize,
 		ws,
-		greetCmd, // Added Greet command to palette
+		greetCmd,
 	}
 }

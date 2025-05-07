@@ -25,6 +25,13 @@ type DeskFSConfig struct {
 	FileTypeTree *trees.FileTypeTree `toml:"file_type_tree"`
 	TargetDir    string              `toml:"target_dir"`
 	CacheDir     string              `toml:"cache_dir"`
+	Database     DatabaseConfig      `toml:"database"` // Added Database config
+}
+
+// Added DatabaseConfig struct
+type DatabaseConfig struct {
+	DSN  string `toml:"dsn"`
+	Type string `toml:"type"`
 }
 
 type IntermediateConfig struct {
@@ -214,8 +221,37 @@ func getDefaultConfig() IntermediateConfig {
 			Logger: gobaselogger.Logger{
 				Style: "json",
 				Level: gobaselogger.LoggerLevels["debug"].String(),
-			},
+				},
+			// Add default database config here if IntermediateConfig is used to write full DeskFSConfig
+			// For now, assuming DeskFSConfig is populated from IntermediateConfig and then Database part is set
 		},
 		CacheDir: internal.DefaultCacheDir,
+		// Note: The getDefaultConfig currently returns IntermediateConfig.
+		// The DeskFSConfig which includes DatabaseConfig will be populated from this
+		// and other sources (like viper for specific DB settings if not in the primary TOML).
+		// If the TOML is expected to contain DB settings directly under a [database] table,
+		// then IntermediateConfig might also need to reflect that, or the parsing logic
+		// in NewIntermediateConfig needs to handle it.
+		// For now, we assume the main config file loaded into DeskFSConfig will have the [database] section.
+	}
+}
+
+// Helper function to get default DeskFSConfig including database defaults
+// This can be used when a config file is missing entirely or the database section is absent.
+func GetDefaultDeskFSConfig() *DeskFSConfig {
+	return &DeskFSConfig{
+		Config: gobaselogger.Config{
+			Logger: gobaselogger.Logger{
+				Style: "json",
+				Level: gobaselogger.LoggerLevels["debug"].String(),
+			},
+		},
+		FileTypeTree: trees.NewFileTypeTree(), // Initialize with an empty tree
+		TargetDir:    ".",                     // Default to current directory
+		CacheDir:     internal.DefaultCacheDir,
+		Database: DatabaseConfig{
+			DSN:  internal.DefaultDatabaseDSN,  // Assuming this constant exists
+			Type: internal.DefaultDatabaseType, // Assuming this constant exists
+		},
 	}
 }

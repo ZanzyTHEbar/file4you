@@ -1,10 +1,12 @@
 package cli_util
 
 import (
+	"context" // Added for Genkit flow execution
 	"errors"
 	"fmt"
 
 	"file4you/internal/cli"
+	"file4you/internal/genkithandler" // Added for Genkit flows and types
 
 	"github.com/spf13/cobra"
 )
@@ -13,28 +15,39 @@ import (
 func NewBackupCmd(params *cli.CmdParams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "backup [target]",
-		Short: "Backup databases, workspaces, or all data.",
-		Long: `Backup operations for file4you.
+		Short: "Backup databases, workspaces, or all data using Genkit flow.",
+		Long: `Backup operations for file4you, now orchestrated by Genkit.
 Targets can be:
-  all          - Backup all data including the central database.
-  database     - Backup only the central database.
-  workspace [id] - Backup a specific workspace by its ID.
-  workspaces   - Backup all workspaces.
+  all          - Backup all data including the central database. (Invokes backupFlow)
+  database     - Backup only the central database. (TODO: Specific flow or tool option)
+  workspace [id] - Backup a specific workspace by its ID. (TODO: Specific flow or tool option)
+  workspaces   - Backup all workspaces. (TODO: Specific flow or tool option)
 `,
 		Args: cobra.MinimumNArgs(1), // Expects at least one argument: the target
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
-			var workspaceID string
-			if target == "workspace" {
-				if len(args) < 2 {
-					err := errors.New("workspace ID is required when target is 'workspace'")
-					params.Interactor.Error("Invalid arguments for backup 'workspace'", err)
-					return err
-				}
-				workspaceID = args[1]
+			// var workspaceID string // Currently, backupFlow doesn't take specific workspaceID yet
+			// if target == "workspace" {
+			// 	if len(args) < 2 {
+			// 		err := errors.New("workspace ID is required when target is 'workspace'")
+			// 		params.Interactor.Error("Invalid arguments for backup 'workspace'", err)
+			// 		return err
+			// 	}
+			// 	workspaceID = args[1]
+			// }
+
+			// For now, only "all" target is directly mapped to the generic backupFlow
+			if target != "all" {
+				msg := fmt.Sprintf("Target '%s' is not yet fully implemented with Genkit flows. Only 'all' is currently supported via backupFlow.", target)
+				params.Interactor.Warning(msg)
+				// return errors.New(msg) // Or proceed with a non-Genkit path if available
+				// For now, let's try to run the generic backup flow for any target to test it.
+				// Later, specific inputs or flows will be needed.
+				params.Interactor.Info(fmt.Sprintf("Proceeding with generic backupFlow for target '%s'. This might not be what you expect.", target))
+
 			}
 
-			confirmed, err := params.Interactor.Confirm(fmt.Sprintf("Are you sure you want to backup '%s'?", target), false)
+			confirmed, err := params.Interactor.Confirm(fmt.Sprintf("Are you sure you want to backup using Genkit flow for target '%s'?", target), false)
 			if err != nil {
 				params.Interactor.Error("Confirmation failed", err)
 				return err
@@ -45,35 +58,47 @@ Targets can be:
 				return nil
 			}
 
-			params.Interactor.Output(fmt.Sprintf("Starting backup for target: %s...", target))
-			if workspaceID != "" {
-				params.Interactor.Output(fmt.Sprintf("Workspace ID: %s", workspaceID))
-			}
-			params.Interactor.StartSpinner("Performing backup...")
+			params.Interactor.Output(fmt.Sprintf("Starting Genkit backup flow for target: %s...", target))
+			params.Interactor.StartSpinner("Performing backup via Genkit flow...")
 
-			// Placeholder for actual backup logic
-			// This logic will eventually be a Genkit flow/tool.
-			// For example: err := backupService.Backup(target, workspaceID, params.Interactor)
-
-			// Simulate work
-			// time.Sleep(3 * time.Second) // Example placeholder for actual work
-			backupSuccessful := true // Placeholder
-			var backupErr error = nil    // Placeholder
-
-			if backupErr != nil {
-				params.Interactor.StopSpinner(false, "Backup failed.")
-				params.Interactor.Error(fmt.Sprintf("Failed to backup '%s'", target), backupErr)
-				return backupErr
+			if params.Genkit == nil {
+				initErr := errors.New("genkit not initialized; this should have happened in root command initialization")
+				params.Interactor.StopSpinner(false, "Genkit initialization error.")
+				params.Interactor.Error("Genkit initialization error", initErr)
+				return initErr
 			}
 
-			if backupSuccessful {
-				params.Interactor.StopSpinner(true, "Backup completed successfully.")
-				params.Interactor.Success(fmt.Sprintf("Target '%s' backed up.", target))
-			} else {
-				// This case might not be reached if backupErr is always set on failure
-				params.Interactor.StopSpinner(false, "Backup did not complete as expected.")
-				params.Interactor.Warning(fmt.Sprintf("Backup for '%s' may not be complete.", target))
+			backupFlow := genkithandler.GetBackupFlow()
+			if backupFlow == nil {
+				flowRetrievalErr := errors.New("BackupFlow not found; ensure it was registered")
+				params.Interactor.StopSpinner(false, "Failed to retrieve backup flow.")
+				params.Interactor.Error("Failed to retrieve flow", flowRetrievalErr)
+				return flowRetrievalErr
 			}
+
+			// Prepare input for the backupFlow.
+			// Currently, BackupToolInput is empty, implying a full backup.
+			// This will need to be adapted if the tool/flow expects specific targets.
+			flowInput := genkithandler.BackupToolInput{}
+			// if target == "database" { flowInput.BackupTarget = "centraldb_only" } // Example for future extension
+
+			flowResult, err := backupFlow.Run(context.Background(), flowInput)
+			if err != nil {
+				params.Interactor.StopSpinner(false, "Genkit backup flow failed.")
+				params.Interactor.Error(fmt.Sprintf("Genkit backupFlow execution failed for target '%s'", target), err)
+				return err
+			}
+
+			params.Interactor.StopSpinner(true, "Genkit backup flow completed successfully.")
+			params.Interactor.Success(fmt.Sprintf("Genkit backup flow for target '%s' finished.", target))
+			params.Interactor.Output(fmt.Sprintf("Flow Result: %s", flowResult.SuccessMessage))
+			if flowResult.DeskFSBackupPath != "" {
+				params.Interactor.Output(fmt.Sprintf("DeskFS Backup Path: %s", flowResult.DeskFSBackupPath))
+			}
+			if flowResult.CentralDBBackupPath != "" {
+				params.Interactor.Output(fmt.Sprintf("CentralDB Backup Path: %s", flowResult.CentralDBBackupPath))
+			}
+
 			return nil
 		},
 	}

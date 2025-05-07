@@ -22,16 +22,16 @@ THE SOFTWARE.
 package cli
 
 import (
+	"context" // Added for Genkit initialization
 	"fmt"
 
 	"file4you/internal"
-	"file4you/internal/cli/cli_util" // Added for NewGreetCmd
-
-	// "file4you/internal/ui" // Removed as it was unused
+	"file4you/internal/db"            // Added for CentralDB initialization
+	"file4you/internal/genkithandler" // Added for Genkit functions
 
 	"github.com/ZanzyTHEbar/go-basetools/logger"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	// "github.com/spf13/viper" // Viper instance was unused
 )
 
 var cfgFile string
@@ -59,29 +59,65 @@ func NewRoot(params *CmdParams) *cobra.Command {
 		params.Palette = []*cobra.Command{}
 	}
 
-	// Add greet command to the palette
-	params.Palette = append(params.Palette, cli_util.NewGreetCmd(params))
-
 	// Add commands to the root
 	rootCmd.AddCommand(params.Palette...)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", fmt.Sprintf("config file (default %s)", internal.DefaultGlobalConfigFile))
 
 	cobra.OnInitialize(func() {
-		params.DeskFS.InitConfig(cfgFile)                       // InitConfig does not return a value
-		logger.InitLogger(&params.DeskFS.InstanceConfig.Config) // Assuming this uses viper instance from DeskFS
-		// If InitConfig or InitLogger need to output errors/info, they should use params.Interactor
-		// For example, if InitConfig were to return an error:
-		// err := params.DeskFS.InitConfig(cfgFile, params.Interactor)
-		// if err != nil {
-		// 	 params.Interactor.Fatal("Failed to initialize configuration", err)
-		// }
-	})
+		params.DeskFS.InitConfig(cfgFile, params.Interactor)
+		// params.DeskFS.InstanceConfig is *deskfs.DeskFSConfig
+		// deskfs.DeskFSConfig embeds gobaselogger.Config
+		// So, params.DeskFS.InstanceConfig.Config is the embedded gobaselogger.Config
+		logger.InitLogger(&params.DeskFS.InstanceConfig.Config) 
 
-	vip := viper.New() // This viper instance seems distinct from the one InitConfig might use.
-	// If DeskFS.InitConfig uses the global viper.Get() or a shared instance, this might be redundant or conflicting.
-	// Consider whether this viper instance is needed or if DeskFS.InstanceConfig.Config already provides necessary viper access.
-	vip.AutomaticEnv() // read in environment variables that match
+		// Accessing Logger.Level from the embedded gobaselogger.Config
+		params.Interactor.Outputf("Configuration loaded. Log level set to: %s", params.DeskFS.InstanceConfig.Logger.Level)
+
+		// Initialize Genkit
+		params.Interactor.Output("Initializing Genkit...")
+		genkitInstance, err := genkithandler.InitializeGenkit(context.Background())
+		if err != nil {
+			params.Interactor.Fatal("Failed to initialize Genkit", err)
+			return // Exit if Genkit initialization fails
+		}
+		params.Genkit = genkitInstance
+		params.Interactor.Success("Genkit initialized successfully.")
+
+		// Register Genkit flows
+		params.Interactor.Output("Registering Genkit flows...")
+		if err := genkithandler.RegisterFlows(params.Genkit); err != nil {
+			params.Interactor.Fatal("Failed to register Genkit flows", err)
+			return // Exit if flow registration fails
+		}
+		params.Interactor.Success("Genkit flows registered successfully.")
+
+		// Register Genkit tools
+		params.Interactor.Output("Registering Genkit tools...")
+		if params.DeskFS == nil {
+			params.Interactor.Fatal("DeskFS not initialized, cannot register tools", nil)
+			return
+		}
+
+		// Ensure CentralDB is initialized and available in params
+		if params.CentralDB == nil {
+			params.Interactor.Info("CentralDB not found in params, attempting to initialize with default settings...")
+			// db.NewCentralDBProvider() currently uses its own internal logic for path/config
+			// and does not take DSN/Type from DeskFSConfig at this point.
+			cdb, err := db.NewCentralDBProvider() // Call without arguments
+			if err != nil {
+				params.Interactor.Fatal("Failed to initialize CentralDB for tool registration", err)
+				return
+			}
+			params.CentralDB = cdb
+			params.Interactor.Success("CentralDB initialized successfully for tool registration.")
+		} else {
+			params.Interactor.Info("CentralDB already initialized, proceeding with tool registration.")
+		}
+
+		genkithandler.RegisterBackupTool(params.Genkit, params.DeskFS, params.CentralDB)
+		params.Interactor.Success("Genkit tools registered successfully.")
+	})
 
 	return rootCmd
 }

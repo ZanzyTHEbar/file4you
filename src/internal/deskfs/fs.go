@@ -6,6 +6,7 @@ import (
 	"file4you/internal/db"
 	"file4you/internal/filesystem/trees"
 	"file4you/internal/terminal"
+	"file4you/internal/ui"
 	"fmt"
 	"io"
 	"io/fs"
@@ -209,9 +210,9 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams
 	return nil
 }
 
-func (dfs *DesktopFS) InitConfig(optionalConfigPath string) {
+func (dfs *DesktopFS) InitConfig(optionalConfigPath string, interactor ui.Interactor) {
 	// Call NewConfig with the provided path (can be nil if no path is specified)
-	config := NewIntermediateConfig(optionalConfigPath)
+	config := NewIntermediateConfig(optionalConfigPath, interactor)
 	slog.Debug(fmt.Sprintf("Loading configuration from path: %v\n", config))
 
 	deskfsConfig := NewDeskFSConfig()

@@ -17,4 +17,8 @@ var (
 	DefaultWorkspaceDBPath     = filepath.Join(DefaultWorkspaceDotDir, "workspace.db")
 	DefaultWorkspaceConfigFile = filepath.Join(DefaultWorkspaceDotDir, "config.toml")
 	DefaultGlobalConfigFile    = filepath.Join(DefaultConfigPath, "config.toml")
+
+	// Default Database settings
+	DefaultDatabaseDSN  = "file::memory:?cache=shared" // Default to in-memory SQLite
+	DefaultDatabaseType = "sqlite3"
 )
