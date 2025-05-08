@@ -63,17 +63,14 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 			idStr, _ := cmd.Flags().GetString("id")
 			config, _ := cmd.Flags().GetString("config")
 
-			if idStr == "" {
-				params.Interactor.Error("Workspace ID is required for update", nil)
-				return fmt.Errorf("workspace ID is required")
-			}
+			// Manual check for idStr == "" removed as MarkFlagRequired will handle it.
 
 			workspaceUUID, err := uuid.Parse(idStr)
 			if err != nil {
 				params.Interactor.Error(fmt.Sprintf("Invalid Workspace ID format: '%s'", idStr), err)
 				return err
 			}
-			
+
 			err = params.DeskFS.WorkspaceManager.UpdateWorkspace(workspaceUUID, config)
 			if err != nil {
 				params.Interactor.Error(fmt.Sprintf("Error updating workspace with ID %s", idStr), err)
@@ -83,7 +80,8 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 			return nil
 		},
 	}
-	updateCmd.Flags().String("id", "", "ID of the workspace to update (required)")
+	updateCmd.Flags().String("id", "", "ID of the workspace to update")
+	_ = updateCmd.MarkFlagRequired("id")
 	updateCmd.Flags().String("config", "", "New configuration data for the workspace")
 
 	listCmd := &cobra.Command{
@@ -117,10 +115,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
 			idStr, _ := cmd.Flags().GetString("id")
 
-			if idStr == "" {
-				params.Interactor.Error("Workspace ID is required for deletion", nil)
-				return fmt.Errorf("workspace ID is required")
-			}
+			// Manual check for idStr == "" removed as MarkFlagRequired will handle it.
 
 			workspaceUUID, err := uuid.Parse(idStr)
 			if err != nil {
@@ -139,7 +134,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 				params.Interactor.Info("Delete operation cancelled by user.")
 				return nil
 			}
-			
+
 			params.Interactor.StartSpinner(fmt.Sprintf("Deleting workspace %s...", idStr))
 			err = params.DeskFS.WorkspaceManager.DeleteWorkspace(workspaceUUID)
 			if err != nil {
@@ -152,7 +147,8 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 			return nil
 		},
 	}
-	deleteCmd.Flags().String("id", "", "ID of the workspace to delete (required)")
+	deleteCmd.Flags().String("id", "", "ID of the workspace to delete")
+	_ = deleteCmd.MarkFlagRequired("id")
 
 	// Add subcommands to the workspace command
 	workspaceCmd.AddCommand(createCmd, updateCmd, deleteCmd, listCmd)

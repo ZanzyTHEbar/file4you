@@ -21,8 +21,6 @@ type snapshotJSON struct {
 	DirectoryState []byte `json:"directory_state"`
 }
 
-var tempSnapshotMap = make(map[string]*snapshotJSON)
-
 func (cd *CentralDBProvider) TakeSnapshot(tree *trees.DirectoryTree) error {
 	state, err := tree.MarshalJSON()
 	if err != nil {
@@ -37,21 +35,20 @@ func (cd *CentralDBProvider) TakeSnapshot(tree *trees.DirectoryTree) error {
 	return nil
 }
 
-func (cd *CentralDBProvider) RestoreSnapshot(snapshotID uuid.UUID) error {
+func (cd *CentralDBProvider) RestoreSnapshot(snapshotID uuid.UUID) (*trees.DirectoryTree, error) {
 	snapshot, err := cd.GetSnapshot(snapshotID)
 	if err != nil {
-		return fmt.Errorf("error getting snapshot: %w", err)
+		return nil, fmt.Errorf("error getting snapshot: %w", err)
 	}
 
 	tree := &trees.DirectoryTree{}
 	err = tree.UnMarshalJSON(snapshot.DirectoryState)
 	if err != nil {
-		return fmt.Errorf("error unmarshalling directory tree: %w", err)
+		return nil, fmt.Errorf("error unmarshalling directory tree: %w", err)
 	}
 
-	cd.DirectoryTree = tree
-
-	return nil
+	// cd.DirectoryTree = tree // Removed: Caller will manage the tree state.
+	return tree, nil
 }
 
 func (cd *CentralDBProvider) GetSnapshot(id uuid.UUID) (*Snapshot, error) {
@@ -110,8 +107,6 @@ func (sn *Snapshot) UnMarshalJSON(data []byte) error {
 	sn.ID, err = uuid.Parse(snap.ID)
 	sn.TakenAt = takenAt
 	sn.DirectoryState = snap.DirectoryState
-
-	tempSnapshotMap[snap.ID] = &snap
 
 	return nil
 }

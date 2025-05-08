@@ -22,10 +22,11 @@ var (
 // Config holds the mapping of file types to extensions
 type DeskFSConfig struct {
 	gobaselogger.Config
-	FileTypeTree *trees.FileTypeTree `toml:"file_type_tree"`
-	TargetDir    string              `toml:"target_dir"`
-	CacheDir     string              `toml:"cache_dir"`
-	Database     DatabaseConfig      `toml:"database"` // Added Database config
+	FileTypeTree           *trees.FileTypeTree `toml:"file_type_tree"`
+	TargetDir              string              `toml:"target_dir"`
+	CacheDir               string              `toml:"cache_dir"`
+	Database               DatabaseConfig      `toml:"database"`                 // Added Database config
+	OrganizeTimeoutMinutes int                 `toml:"organize_timeout_minutes"` // Timeout for the EnhancedOrganize operation
 }
 
 // Added DatabaseConfig struct
@@ -42,10 +43,10 @@ type IntermediateConfig struct {
 
 func CreateDirIfNotExist(path string, interactor ui.Interactor) { // Added Interactor
 	// Create the directory if it doesn't exist
-	if _, err := os.Stat(filepath.Dir(path)); os.IsNotExist(err) {
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(path, 0755); err != nil {
 			// slog.Info(fmt.Sprintf("Path %s: %v", filepath.Dir(path), err)) // Internal log
-			errMsg := fmt.Sprintf("Error creating directory at %s", filepath.Dir(path))
+			errMsg := fmt.Sprintf("Error creating directory at %s", path)
 			// ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error) // Internal assert
 			if interactor != nil {
 				interactor.Error(errMsg, err)
@@ -156,7 +157,7 @@ func NewIntermediateConfig(optionalPath string, interactor ui.Interactor) *Inter
 			// Return a default config or handle error appropriately
 			// For now, returning an empty struct to avoid nil pointer, but signaling failure is important.
 			interactor.Warning("Returning empty default config due to decoding error.")
-			return &IntermediateConfig{} 
+			return &IntermediateConfig{}
 		}
 	}
 
@@ -167,7 +168,8 @@ func NewIntermediateConfig(optionalPath string, interactor ui.Interactor) *Inter
 
 func NewDeskFSConfig() *DeskFSConfig {
 	return &DeskFSConfig{
-		FileTypeTree: trees.NewFileTypeTree(),
+		FileTypeTree:           trees.NewFileTypeTree(),
+		OrganizeTimeoutMinutes: 10, // Default to 10 minutes
 	}
 }
 
@@ -221,7 +223,7 @@ func getDefaultConfig() IntermediateConfig {
 			Logger: gobaselogger.Logger{
 				Style: "json",
 				Level: gobaselogger.LoggerLevels["debug"].String(),
-				},
+			},
 			// Add default database config here if IntermediateConfig is used to write full DeskFSConfig
 			// For now, assuming DeskFSConfig is populated from IntermediateConfig and then Database part is set
 		},
@@ -253,5 +255,6 @@ func GetDefaultDeskFSConfig() *DeskFSConfig {
 			DSN:  internal.DefaultDatabaseDSN,  // Assuming this constant exists
 			Type: internal.DefaultDatabaseType, // Assuming this constant exists
 		},
+		OrganizeTimeoutMinutes: 10, // Default to 10 minutes
 	}
 }

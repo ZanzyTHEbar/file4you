@@ -31,8 +31,6 @@ func NewOrganize(params *cli.CmdParams) *cobra.Command {
 
 	// Define flags and configuration settings
 	organizeCmd.Flags().BoolVar(&fileParams.RemoveAfter, "remove", false, "Remove files after organizing")
-	organizeCmd.Flags().BoolVar(&fileParams.NamesOnly, "names-only", false, "Organize by names only")
-	organizeCmd.Flags().BoolVar(&fileParams.ForceSkipIgnore, "force-skip-ignore", false, "Force skip ignored files")
 	organizeCmd.Flags().BoolVarP(&fileParams.Recursive, "recursive", "r", false, "Recursively organize files")
 	organizeCmd.Flags().BoolVarP(&fileParams.DryRun, "dryrun", "n", false, "Dry run to simulate organization")
 	organizeCmd.Flags().IntVarP(&fileParams.MaxDepth, "max-depth", "x", -1, "Maximum depth for recursion")

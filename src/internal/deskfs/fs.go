@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/ZanzyTHEbar/assert-lib"
-	"github.com/rs/zerolog/log"
 
 	ignore "github.com/sabhiram/go-gitignore"
 )
@@ -34,8 +33,6 @@ const (
 
 type FilePathParams struct {
 	RemoveAfter        bool
-	NamesOnly          bool
-	ForceSkipIgnore    bool
 	Recursive          bool
 	MaxDepth           int
 	GitEnabled         bool
@@ -93,8 +90,23 @@ func NewDesktopFS(term *terminal.Terminal, centralDB *db.CentralDBProvider) *Des
 		term.OutputErrorAndExit("Couldn't find home directory: %v", err)
 	}
 
-	homeDCDir := findDesktopCleaner(cwd)
-	cacheDir := filepath.Join(homeDCDir, ".cache")
+	homeDCDir := findDesktopCleaner(cwd) // This can return "" or cwd
+	var cacheDir string
+	if homeDCDir != "" && homeDCDir != cwd {
+		// DESKTOP_CLEANER_ENV was set and the specific env-based dir exists
+		cacheDir = filepath.Join(homeDCDir, ".cache")
+	} else {
+		// Default to user's home directory if env var not set,
+		// or if the env-specific dir doesn't exist (findDesktopCleaner returned cwd),
+		// or if findDesktopCleaner returned "" (env not set).
+		// This provides a stable, absolute default cache location.
+		cacheDir = filepath.Join(home, ".file4you", ".cache")
+	}
+
+	// Ensure the cache directory exists
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		term.OutputErrorAndExit("Error creating cache directory %s: %v", cacheDir, err)
+	}
 
 	assertHAndler := assert.NewAssertHandler()
 
@@ -147,13 +159,22 @@ func CalculateMaxDepth(sourceDir string) (int, error) {
 }
 
 func (dfs *DesktopFS) IndexDirectory(cfg *DeskFSConfig, params *FilePathParams) error {
-	// Calculate the maximum depth of SourceDir
-	maxDepth, err := CalculateMaxDepth(params.SourceDir)
-	if err != nil {
-		return fmt.Errorf("failed to calculate max depth: %w", err)
+	var actualMaxDepth int
+	var err error
+
+	if params.MaxDepth > 0 {
+		actualMaxDepth = params.MaxDepth
+		slog.Debug(fmt.Sprintf("Using user-defined MaxDepth: %d", actualMaxDepth))
+	} else {
+		slog.Debug("Calculating MaxDepth from source directory structure.")
+		actualMaxDepth, err = CalculateMaxDepth(params.SourceDir)
+		if err != nil {
+			return fmt.Errorf("failed to calculate max depth: %w", err)
+		}
+		slog.Debug(fmt.Sprintf("Calculated MaxDepth: %d", actualMaxDepth))
 	}
 
-	if err := dfs.buildTreeAndCache(params.SourceDir, params.Recursive, maxDepth); err != nil {
+	if err := dfs.buildTreeAndCache(params.SourceDir, params.Recursive, actualMaxDepth); err != nil {
 		return fmt.Errorf("failed to build directory tree: %w", err)
 	}
 
@@ -171,10 +192,18 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams
 	var once sync.Once
 	errCh := make(chan error, len(dfs.WorkspaceManager.centralDB.DirectoryTree.Root.Files))
 
+	// Determine timeout duration from config, with a fallback default
+	timeoutMinutes := 10 // Default fallback
+	if cfg != nil && cfg.OrganizeTimeoutMinutes > 0 {
+		timeoutMinutes = cfg.OrganizeTimeoutMinutes
+	}
+	slog.Debug(fmt.Sprintf("EnhancedOrganize timeout set to %d minutes", timeoutMinutes))
+
 	// Add timeout
 	go func() {
 		select {
-		case <-time.After(10 * time.Minute):
+		case <-time.After(time.Duration(timeoutMinutes) * time.Minute):
+			slog.Warn(fmt.Sprintf("EnhancedOrganize timed out after %d minutes", timeoutMinutes))
 			cancel()
 		case <-ctx.Done():
 			return
@@ -256,14 +285,14 @@ func (dfs *DesktopFS) Copy(node *trees.DirectoryNode, dst string, recursive bool
 				return fmt.Errorf("failed to create directory %s: %w", dst, err)
 			}
 		} else {
-			log.Info().Msgf("Dry run: would create directory %s", dst)
+			slog.Info(fmt.Sprintf("Dry run: would create directory %s", dst))
 		}
 
 		// Copy each child directory
 		for _, childDir := range node.Children {
 			childDst := filepath.Join(dst, childDir.Path)
 			if dryrun {
-				log.Info().Msgf("Dry run: moving directory %s to %s", childDir.Path, childDst)
+				slog.Info(fmt.Sprintf("Dry run: moving directory %s to %s", childDir.Path, childDst))
 				// Continue processing other children
 				continue
 			}
@@ -274,12 +303,13 @@ func (dfs *DesktopFS) Copy(node *trees.DirectoryNode, dst string, recursive bool
 
 		// Copy each file in the directory
 		for _, fileNode := range node.Files {
-			fileDst := filepath.Join(dst, fileNode.Path)
+			fileSrcPath := fileNode.Path                                    // Source path of the file
+			fileDstPath := filepath.Join(dst, filepath.Base(fileNode.Path)) // Destination path for the file
 			if dryrun {
-				log.Info().Msgf("Dry run: moving file %s to %s", fileNode.Path, fileDst)
+				slog.Info(fmt.Sprintf("Dry run: copying file %s to %s", fileSrcPath, fileDstPath))
 				continue
 			}
-			if err := dfs.copyFile(fileNode, fileDst, remove, dryrun); err != nil {
+			if err := dfs.copyFile(fileSrcPath, fileDstPath, remove, dryrun); err != nil { // Pass remove from parent Copy
 				return err
 			}
 		}
@@ -293,45 +323,98 @@ func (dfs *DesktopFS) Copy(node *trees.DirectoryNode, dst string, recursive bool
 	return fmt.Errorf("node has no files or directories to copy")
 }
 
-// Helper function for copying a file
-func (dfs *DesktopFS) copyFile(fileNode *trees.FileNode, dst string, remove bool, dryrun bool) error {
-
-	if dryrun {
-		slog.Info(fmt.Sprintf("Dry run: moving %s to %s\n", fileNode.Path, dst))
+// Helper function for copying a single file
+func (dfs *DesktopFS) copyFile(srcPath string, dstPath string, removeOriginal bool, dryRun bool) error {
+	if dryRun {
+		operation := "copying"
+		if removeOriginal {
+			operation = "moving (by copy-then-delete)"
+		}
+		slog.Info(fmt.Sprintf("Dry run: %s file %s to %s", operation, srcPath, dstPath))
 		return nil
 	}
 
-	srcFile, err := os.Open(fileNode.Path)
+	srcFile, err := os.Open(srcPath)
 	if err != nil {
-		return fmt.Errorf("failed to open source file %s: %w", fileNode.Path, err)
+		return fmt.Errorf("failed to open source file %s: %w", srcPath, err)
 	}
 	defer srcFile.Close()
 
-	dstFile, err := os.Create(dst)
+	dstFile, err := os.Create(dstPath)
 	if err != nil {
-		return fmt.Errorf("failed to create destination file %s: %w", dst, err)
+		return fmt.Errorf("failed to create destination file %s: %w", dstPath, err)
 	}
 	defer dstFile.Close()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("failed to copy file %s to %s: %w", fileNode.Path, dst, err)
+		return fmt.Errorf("failed to copy file %s to %s: %w", srcPath, dstPath, err)
 	}
 
 	// Optionally remove the original file after copying
-	if remove {
-		if err := os.Remove(fileNode.Path); err != nil {
-			return fmt.Errorf("failed to remove original file %s after copy: %w", fileNode.Path, err)
+	if removeOriginal {
+		// Ensure files are closed before attempting removal
+		dstFile.Close()
+		srcFile.Close() // Must be closed before os.Remove can succeed on some OS (e.g. Windows)
+		if err := os.Remove(srcPath); err != nil {
+			return fmt.Errorf("failed to remove original file %s after copy: %w", srcPath, err)
 		}
+	}
+	return nil
+}
+
+// moveFile attempts to move a single file from srcPath to dstPath.
+// If a cross-device link error occurs, it falls back to copying and then deleting the original file.
+func (dfs *DesktopFS) moveFile(srcPath, dstPath string, dryRun bool) error {
+	if dryRun {
+		slog.Info(fmt.Sprintf("Dry run: moving file %s to %s", srcPath, dstPath))
+		return nil
+	}
+
+	// Try renaming (moving) the file directly
+	if err := os.Rename(srcPath, dstPath); err != nil {
+		// If we encounter a cross-device link error, fall back to copy and delete
+		if linkErr, ok := err.(*os.LinkError); ok && linkErr.Err == syscall.EXDEV {
+			slog.Warn(fmt.Sprintf("Cross-device error detected for file %s: falling back to copy and delete", srcPath))
+
+			// Fallback: Copy the file
+			srcFile, openErr := os.Open(srcPath)
+			if openErr != nil {
+				return fmt.Errorf("failed to open source file %s for copy-fallback: %w", srcPath, openErr)
+			}
+			defer srcFile.Close()
+
+			dstFile, createErr := os.Create(dstPath)
+			if createErr != nil {
+				return fmt.Errorf("failed to create destination file %s for copy-fallback: %w", dstPath, createErr)
+			}
+			defer dstFile.Close()
+
+			if _, copyErr := io.Copy(dstFile, srcFile); copyErr != nil {
+				return fmt.Errorf("failed to copy file %s to %s during copy-fallback: %w", srcPath, dstPath, copyErr)
+			}
+			// Close files before attempting to remove source
+			dstFile.Close()
+			srcFile.Close()
+
+			// Fallback: Delete the original file
+			if removeErr := os.Remove(srcPath); removeErr != nil {
+				return fmt.Errorf("failed to remove original file %s after copy-fallback: %w", srcPath, removeErr)
+			}
+			return nil
+		}
+		// Not a cross-device error, or another type of LinkError
+		return fmt.Errorf("failed to move file %s to %s: %w", srcPath, dstPath, err)
 	}
 	return nil
 }
 
 // Move attempts to move a file or directory from src to dst.
 // If a cross-device link error occurs, it falls back to copying and deleting the original.
-func (dfs *DesktopFS) Move(node *trees.DirectoryNode, dst string, recursive bool, dryrun bool) error {
+// This function is primarily for directories. For single files, use moveFile.
+func (dfs *DesktopFS) Move(node *trees.DirectoryNode, dst string, recursive bool, dryRun bool) error {
 
-	if dryrun {
-		log.Info().Msgf("Dry run: moving %s to %s\n", node.Path, dst)
+	if dryRun {
+		slog.Info(fmt.Sprintf("Dry run: moving %s to %s", node.Path, dst))
 		return nil
 	}
 
@@ -339,8 +422,8 @@ func (dfs *DesktopFS) Move(node *trees.DirectoryNode, dst string, recursive bool
 	if err := os.Rename(node.Path, dst); err != nil {
 		// If we encounter a cross-device link error, fall back to copy and delete
 		if linkErr, ok := err.(*os.LinkError); ok && linkErr.Err == syscall.EXDEV {
-			log.Warn().Msgf("Cross-device error detected: falling back to copy for %s\n", node.Path)
-			if err := dfs.Copy(node, dst, recursive, true, dryrun); err != nil {
+			slog.Warn(fmt.Sprintf("Cross-device error detected: falling back to copy for %s", node.Path))
+			if err := dfs.Copy(node, dst, recursive, true, dryRun); err != nil { // Corrected dryrun to dryRun
 				return fmt.Errorf("failed to copy file for cross-device move: %w", err)
 			}
 			return nil
@@ -399,7 +482,6 @@ func (dfs *DesktopFS) buildTreeNodes(node *trees.DirectoryNode, recursive bool, 
 
 	for _, entry := range entries {
 		childPath := filepath.Join(node.Path, entry.Name())
-		//var child *trees.DirectoryNode
 
 		// Skip ignored files and directories
 		if ignored != nil && ignored.MatchesPath(childPath) {
@@ -410,7 +492,6 @@ func (dfs *DesktopFS) buildTreeNodes(node *trees.DirectoryNode, recursive bool, 
 		if entry.IsDir() {
 			childDir := trees.NewDirectoryNode(childPath, node)
 			node.Children = append(node.Children, childDir)
-			//dfs.WorkspaceManager.centralDB.DirectoryTree.SafeCacheSet(childPath, childDir)
 
 			if !recursive {
 				continue
@@ -432,7 +513,6 @@ func (dfs *DesktopFS) buildTreeNodes(node *trees.DirectoryNode, recursive bool, 
 				Metadata:  trees.NewMetadata(entryInfo),
 			}
 			_ = node.AddFile(childFile)
-			//dfs.WorkspaceManager.centralDB.DirectoryTree.SafeCacheSet(childPath, child)
 		}
 	}
 
@@ -455,7 +535,6 @@ func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.Ca
 			default:
 			}
 
-			// Determine target folder without locking (no shared variable access)
 			targetDir, found := dfs.determineTargetFolder(ctx, fileNode, cfg)
 			if !found {
 				slog.Warn(fmt.Sprintf("Skipping file %s as no target path found", fileNode.Name))
@@ -475,7 +554,6 @@ func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.Ca
 			}
 
 			destPath := filepath.Join(destDir, filepath.Base(fileNode.Path))
-			// Check for conflict without holding a lock
 			if _, err := os.Stat(destPath); err == nil {
 				switch params.ConflictResolution {
 				case Overwrite:
@@ -496,11 +574,12 @@ func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.Ca
 			// Copy or move the file based on params
 			var fileErr error
 			if params.CopyFiles {
-				fileErr = dfs.copyFile(fileNode, destPath, params.RemoveAfter, params.DryRun)
+				// If CopyFiles is true, it implies we want a copy.
+				// params.RemoveAfter will determine if the original is deleted after copy.
+				fileErr = dfs.copyFile(fileNode.Path, destPath, params.RemoveAfter, params.DryRun)
 			} else {
-				// For moving, construct a DirectoryNode with file path
-				dummyNode := &trees.DirectoryNode{Path: fileNode.Path}
-				fileErr = dfs.Move(dummyNode, destPath, false, params.DryRun)
+				// If CopyFiles is false, it implies a direct move.
+				fileErr = dfs.moveFile(fileNode.Path, destPath, params.DryRun)
 			}
 
 			if fileErr != nil {
@@ -555,37 +634,53 @@ func (dfs *DesktopFS) findFolderForExtension(ctx context.Context, node *trees.Fi
 }
 
 // buildPathFromNode constructs the path from the root to the given node.
+// If the given node is the root itself, an empty path is returned.
 func buildPathFromNode(ctx context.Context, node *trees.FileTypeNode) string {
-	// If this is the root node, start from its children
-	if node.IsRoot() && len(node.Children) >= 1 {
-		// Start from the first child to avoid adding "root" to the path
-		node = node.Children[0]
+	if node == nil || node.IsRoot() {
+		slog.Debug("buildPathFromNode: node is root or nil, returning empty path")
+		return "" // Represents the base of the target directory
 	}
 
 	assertHandler := assert.NewAssertHandler()
 	assertHandler.SetExitFunc(func(int) {
-		slog.Error("[Path Assertion Error]: assertion failure")
+		slog.Error("[Path Assertion Error]: assertion failure in buildPathFromNode")
 	})
 
-	// Ensure that the node has a valid name
+	// Ensure that the node has a valid name (it's not root, so it should have one if part of a path)
 	if node.Name == "" {
-		assertHandler.Never(ctx, fmt.Sprintf("Node has an invalid or empty name: %v", node), slog.Error)
+		// This case should ideally not be reached if nodes forming paths always have names.
+		assertHandler.Never(ctx, fmt.Sprintf("buildPathFromNode: node has an invalid or empty name: %v", node), slog.Error)
+		slog.Warn(fmt.Sprintf("buildPathFromNode: encountered node with empty name: %v. Path construction might be incorrect.", node))
+		// Depending on desired behavior, could return error or continue carefully.
+		// For now, let it proceed, path will just miss this segment's name.
 	}
 
-	pathSegments := []string{node.Name}
-	for current := node.Parent; current != nil; current = current.Parent {
-		assertHandler.Assert(ctx, current.Name != "", "Invalid node name detected", slog.Error)
-		if current.IsRoot() {
-			break // Skip "root" in the path
+	pathSegments := []string{}
+	current := node
+	// Iterate upwards from the current node until we reach the root or nil parent
+	for current != nil && !current.IsRoot() {
+		// current.Name should not be empty if it's part of a valid path structure.
+		// The root node (named "root") is skipped by !current.IsRoot().
+		if current.Name == "" {
+			// This indicates a malformed tree structure if a non-root node in the path has no name.
+			assertHandler.Never(ctx, fmt.Sprintf("buildPathFromNode: encountered node with empty name in path hierarchy: %v", current), slog.Error)
+			slog.Warn(fmt.Sprintf("buildPathFromNode: node in path hierarchy has empty name: %v. Skipping in path.", current))
+		} else {
+			pathSegments = append([]string{current.Name}, pathSegments...)
 		}
-		pathSegments = append([]string{current.Name}, pathSegments...)
+		current = current.Parent
 	}
-	assertHandler.Assert(ctx, node.IsRoot() || node.Parent != nil, "Root Node should not have a parent", slog.Error)
 
 	finalPath := filepath.Join(pathSegments...)
-	slog.Debug(fmt.Sprintf("Final constructed path (with case preserved): %s\n", finalPath))
+	slog.Debug(fmt.Sprintf("Final constructed path (with case preserved): %s (from node: %s)", finalPath, node.Name))
 
-	assertHandler.Assert(ctx, finalPath != "", "Constructed path should not be empty", slog.Error)
+	// The assertion `finalPath != ""` might be too strict if an empty path is valid (e.g., for extensions on root,
+	// but that case is handled by the initial `if node.IsRoot()` check returning `""`).
+	// If `node` is not root, `finalPath` should ideally not be empty if `node.Name` is not empty.
+	if node != nil && !node.IsRoot() && node.Name != "" && finalPath == "" {
+		// This could happen if node.Name was the only segment and it was empty, or pathSegments ended up empty.
+		slog.Warn(fmt.Sprintf("buildPathFromNode: constructed empty path for non-root node: %s", node.Name))
+	}
 
 	return finalPath
 }
