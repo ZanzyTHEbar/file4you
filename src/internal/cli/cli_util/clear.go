@@ -57,7 +57,7 @@ Targets can be:
 			}
 			params.Interactor.StartSpinner("Performing clear operation...")
 
-			// Placeholder for actual clear logic
+			// TODO: Placeholder for actual clear logic
 			// This logic will eventually be a Genkit flow/tool.
 			// For example: err := clearService.Clear(target, workspaceID, params.Interactor)
 

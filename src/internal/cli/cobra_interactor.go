@@ -10,7 +10,6 @@ import (
 	"file4you/internal/ui"
 
 	"github.com/briandowns/spinner" // Assuming you use this or similar
-	"github.com/spf13/cobra"
 )
 
 // CobraInteractor implements the ui.Interactor interface for Cobra CLI interactions.
@@ -32,7 +31,7 @@ func (ci *CobraInteractor) Prompt(message string, defaultValue string) (string, 
 	}
 
 	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('')
+	input, err := reader.ReadString('\n')
 	if err != nil {
 		return "", err
 	}

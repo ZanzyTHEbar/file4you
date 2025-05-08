@@ -14,11 +14,11 @@ import (
 )
 
 type WorkspaceManager struct {
-	centralDB     *db.CentralDBProvider
+	centralDB     db.ICentralDBProvider
 	AssertHandler *assert.AssertHandler
 }
 
-func NewWorkspaceManager(centralDB *db.CentralDBProvider, assertHandler *assert.AssertHandler) *WorkspaceManager {
+func NewWorkspaceManager(centralDB db.ICentralDBProvider, assertHandler *assert.AssertHandler) *WorkspaceManager {
 	return &WorkspaceManager{
 		centralDB:     centralDB,
 		AssertHandler: assertHandler,

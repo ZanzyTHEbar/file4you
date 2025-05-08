@@ -31,7 +31,7 @@ func runUpgradeLogic(params *cli.CmdParams) error {
 	params.Interactor.Output("Checking for updates...")
 	params.Interactor.StartSpinner("Processing upgrade...")
 
-	// Placeholder for actual upgrade logic.
+	// TODO: Placeholder for actual upgrade logic.
 	// The previous code was:
 	// upgrade := terminal.NewUpgrade(params.Term)
 	// upgrade.CheckForUpgrade()
@@ -49,8 +49,8 @@ func runUpgradeLogic(params *cli.CmdParams) error {
 	// and we just report success or failure through the interactor.
 	// This might involve calling a function like: success, err := app_update_service.PerformUpgrade()
 
-	success := true // Placeholder
-	var err error = nil  // Placeholder
+	success := true     // Placeholder
+	var err error = nil // Placeholder
 
 	if err != nil {
 		params.Interactor.StopSpinner(false, "Upgrade check failed.")

@@ -54,6 +54,8 @@ func (p *FilePathParams) Validate() error {
 	return nil
 }
 
+// DesktopFS is the main filesystem manager for the file4you application.
+// It provides functionality for organizing and managing files across workspaces.
 type DesktopFS struct {
 	HomeDir          string
 	Cwd              string
@@ -78,7 +80,7 @@ func NewFilePathParams() *FilePathParams {
 	}
 }
 
-func NewDesktopFS(term *terminal.Terminal, centralDB *db.CentralDBProvider) *DesktopFS {
+func NewDesktopFS(term *terminal.Terminal, centralDB db.ICentralDBProvider) *DesktopFS {
 	var err error
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -183,6 +185,15 @@ func (dfs *DesktopFS) IndexDirectory(cfg *DeskFSConfig, params *FilePathParams) 
 
 // Move or copy files based on the configuration
 func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams) error {
+	// Validate that source and target directories exist
+	if _, err := os.Stat(params.SourceDir); os.IsNotExist(err) {
+		return fmt.Errorf("source directory does not exist: %s", params.SourceDir)
+	}
+	
+	if _, err := os.Stat(params.TargetDir); os.IsNotExist(err) {
+		return fmt.Errorf("target directory does not exist: %s", params.TargetDir)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Ensure context is canceled after function exits
 
@@ -190,7 +201,22 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams
 
 	var wg sync.WaitGroup
 	var once sync.Once
-	errCh := make(chan error, len(dfs.WorkspaceManager.centralDB.DirectoryTree.Root.Files))
+	dirTree := dfs.WorkspaceManager.centralDB.GetDirectoryTree()
+	
+	// Check if the DirectoryTree or its Root is nil, and initialize if needed
+	if dirTree == nil || dirTree.Root == nil {
+		// Initialize the DirectoryTree with the source directory if it doesn't exist or has no root
+		dirTree = trees.NewDirectoryTree(trees.WithRoot(params.SourceDir))
+		dfs.WorkspaceManager.centralDB.SetDirectoryTree(dirTree)
+	}
+	
+	var errChSize int
+	if dirTree.Root != nil && dirTree.Root.Files != nil {
+		errChSize = len(dirTree.Root.Files)
+	} else {
+		errChSize = 10 // Default capacity if Files is nil
+	}
+	errCh := make(chan error, errChSize)
 
 	// Determine timeout duration from config, with a fallback default
 	timeoutMinutes := 10 // Default fallback
@@ -208,10 +234,13 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams
 		case <-ctx.Done():
 			return
 		}
-	}()
-
-	// Traverse and organize files based on config
-	dfs.traverseAndOrganize(ctx, cancel, dfs.WorkspaceManager.centralDB.DirectoryTree.Root, cfg, params, &wg, errCh)
+	}()	// Traverse and organize files based on config
+	if dirTree != nil && dirTree.Root != nil {
+		dfs.traverseAndOrganize(ctx, cancel, dirTree.Root, cfg, params, &wg, errCh)
+	} else {
+		// Log the error but don't stop execution
+		slog.Error("Cannot traverse directory tree: tree or root is nil")
+	}
 
 	// Wait for all goroutines to complete
 	go func() {
@@ -444,22 +473,24 @@ func (dfs *DesktopFS) MoveToTrash(node *trees.DirectoryNode) error {
 func (dfs *DesktopFS) buildTreeAndCache(rootPath string, recursive bool, maxDepth int) error {
 	// Add deferred cleanup
 	defer func() {
-		if dfs.WorkspaceManager.centralDB.DirectoryTree != nil {
-			dfs.WorkspaceManager.centralDB.DirectoryTree.Cleanup()
+		dirTree := dfs.WorkspaceManager.centralDB.GetDirectoryTree()
+		if (dirTree != nil) {
+			dirTree.Cleanup()
 		}
 	}()
 
-	// Initialize the DirectoryTree and Cache
-	if dfs.WorkspaceManager.centralDB.DirectoryTree == nil {
+	// Initialize the DirectoryTree if it doesn't exist
+	if dfs.WorkspaceManager.centralDB.GetDirectoryTree() == nil {
 		newDirectoryTree := trees.NewDirectoryTree(trees.WithRoot(rootPath))
-		dfs.WorkspaceManager.centralDB.DirectoryTree = newDirectoryTree
+		dfs.WorkspaceManager.centralDB.SetDirectoryTree(newDirectoryTree)
 	}
 
 	//if dfs.WorkspaceManager.centralDB.DirectoryTree.Cache == nil {
 	//	dfs.WorkspaceManager.centralDB.DirectoryTree.Cache = make(map[string]*trees.DirectoryNode)
 	//}
 
-	return dfs.buildTreeNodes(dfs.WorkspaceManager.centralDB.DirectoryTree.Root, recursive, maxDepth, 0)
+	dirTree := dfs.WorkspaceManager.centralDB.GetDirectoryTree()
+	return dfs.buildTreeNodes(dirTree.Root, recursive, maxDepth, 0)
 }
 
 // Recursive helper to populate the directory tree with DirectoryNode entries
@@ -673,11 +704,10 @@ func buildPathFromNode(ctx context.Context, node *trees.FileTypeNode) string {
 
 	finalPath := filepath.Join(pathSegments...)
 	slog.Debug(fmt.Sprintf("Final constructed path (with case preserved): %s (from node: %s)", finalPath, node.Name))
-
 	// The assertion `finalPath != ""` might be too strict if an empty path is valid (e.g., for extensions on root,
 	// but that case is handled by the initial `if node.IsRoot()` check returning `""`).
 	// If `node` is not root, `finalPath` should ideally not be empty if `node.Name` is not empty.
-	if node != nil && !node.IsRoot() && node.Name != "" && finalPath == "" {
+	if !node.IsRoot() && node.Name != "" && finalPath == "" {
 		// This could happen if node.Name was the only segment and it was empty, or pathSegments ended up empty.
 		slog.Warn(fmt.Sprintf("buildPathFromNode: constructed empty path for non-root node: %s", node.Name))
 	}
@@ -718,4 +748,51 @@ func generateUniqueFilename(path string) string {
 			return newPath
 		}
 	}
+}
+
+// Backup creates a backup of the DesktopFS configuration files and workspace data.
+// It returns the path to the backup directory and any error that occurred.
+func (dfs *DesktopFS) Backup() (string, error) {
+	// Create a backup directory with timestamp
+	timestamp := time.Now().Format("20060102_150405")
+	backupDir := filepath.Join(dfs.HomeDCDir, "backups", fmt.Sprintf("deskfs_backup_%s", timestamp))
+	
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return "", fmt.Errorf("could not create backup directory: %v", err)
+	}
+	
+	// Backup the workspace configurations
+	if dfs.WorkspaceManager != nil && dfs.WorkspaceManager.centralDB != nil {
+		// Backup workspace configurations
+		workspaces, err := dfs.WorkspaceManager.centralDB.ListWorkspaces()
+		if err == nil {
+			for _, workspace := range workspaces {
+				config, err := dfs.WorkspaceManager.centralDB.GetWorkspaceConfig(workspace.ID)
+				if err == nil {
+					configPath := filepath.Join(backupDir, fmt.Sprintf("workspace_%s.json", workspace.ID))
+					if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+						slog.Error("Failed to backup workspace config", "workspace", workspace.ID.String(), "error", err)
+					} else {
+						slog.Info("Workspace config backed up successfully", "workspace", workspace.ID.String(), "path", configPath)
+					}
+				}
+			}
+		}
+	}
+	
+	// Backup key file paths and metadata
+	infoFile := filepath.Join(backupDir, "deskfs_info.txt")
+	info := fmt.Sprintf("DesktopFS Backup\nTimestamp: %s\n"+
+		"Home Directory: %s\n"+
+		"Current Working Directory: %s\n"+
+		"Cache Directory: %s\n"+
+		"Home DC Directory: %s\n",
+		timestamp, dfs.HomeDir, dfs.Cwd, dfs.CacheDir, dfs.HomeDCDir)
+	
+	if err := os.WriteFile(infoFile, []byte(info), 0644); err != nil {
+		slog.Error("Failed to write backup info file", "error", err)
+	}
+	
+	slog.Info("DesktopFS backup completed", "path", backupDir)
+	return backupDir, nil
 }

@@ -51,17 +51,7 @@ func (cd *CentralDBProvider) RestoreSnapshot(snapshotID uuid.UUID) (*trees.Direc
 	return tree, nil
 }
 
-func (cd *CentralDBProvider) GetSnapshot(id uuid.UUID) (*Snapshot, error) {
-	row := cd.db.QueryRow("SELECT id, taken_at, directory_state FROM snapshots WHERE id = $1", id)
-
-	var snap Snapshot
-	err := row.Scan(&snap.ID, &snap.TakenAt, &snap.DirectoryState)
-	if err != nil {
-		return nil, fmt.Errorf("error scanning snapshot from database: %w", err)
-	}
-
-	return &snap, nil
-}
+// GetSnapshot has been moved to centraldbprovider.go for better implementation
 
 func (cd *CentralDBProvider) GetSnapshots() ([]Snapshot, error) {
 	rows, err := cd.db.Query("SELECT id, taken_at, directory_state FROM snapshots")
