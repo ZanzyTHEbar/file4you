@@ -1,0 +1,17 @@
+genkit:
+  plugins:
+    googleAI:
+      apiKey: "${GOOGLE_AI_API_KEY}" # Read from env var
+      defaultModel: "gemini-1.5-pro-latest"
+    openAI:
+      apiKey: "${OPENAI_API_KEY}"
+      defaultModel: "gpt-4-turbo"
+      timeoutSeconds: 60
+  prompts:
+    # Path to .prompt files, relative to where the app runs or a defined base path
+    directory: "./prompts"
+
+file4you:
+  genkithandler:
+    featureFlags:
+      someNewFeature: true

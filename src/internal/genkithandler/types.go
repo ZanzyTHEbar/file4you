@@ -2,7 +2,6 @@
 package genkithandler
 
 import (
-	"github.com/firebase/genkit/go/core"
 	"github.com/google/uuid"
 )
 
@@ -19,15 +18,6 @@ type BackupToolOutput struct {
 	CentralDBBackupPath string `json:"centralDBBackupPath,omitempty"`
 	SuccessMessage      string `json:"successMessage"`
 }
-
-// Flow runners to store the pre-registered flows.
-var (
-	// greetingFlowRunner stores the runner for the greetingFlow.
-	greetingFlowRunner *core.Flow[string, string, struct{}]
-
-	// backupFlowRunner stores the runner for the backupFlow.
-	backupFlowRunner *core.Flow[BackupToolInput, BackupToolOutput, struct{}]
-)
 
 // SessionID generates a unique session identifier.
 func SessionID() string {

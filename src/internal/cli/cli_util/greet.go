@@ -38,20 +38,39 @@ func NewGreetCmd(params *cli.CmdParams) *cobra.Command {
 
 			// Get the GreetingFlow runner
 			// Assumes flows were registered during the central Genkit initialization
-			greetingFlow := genkithandler.GetGreetingFlow()
-			if greetingFlow == nil {
-				flowRetrievalErr := errors.New("GreetingFlow not found; ensure it was registered")
-				params.Interactor.Error("Failed to retrieve flow", flowRetrievalErr)
+			flowRunnerInter := genkithandler.GetGreetingFlow()
+			if flowRunnerInter == nil {
+				flowRetrievalErr := errors.New("GreetingFlow runner not found; ensure it was registered")
+				params.Interactor.Error("Failed to retrieve flow runner", flowRetrievalErr)
 				return flowRetrievalErr
+			}
+
+			// Type assert to the specific runner type defined in legacy.go
+			type legacyFlowRunner interface {
+				Run(ctx context.Context, input interface{}) (interface{}, error)
+			}
+
+			greetingFlowRunner, ok := flowRunnerInter.(legacyFlowRunner)
+			if !ok {
+				typeErr := errors.New("retrieved flow runner is not of expected type (legacyFlowRunner)")
+				params.Interactor.Error("Type assertion failed", typeErr)
+				return typeErr
 			}
 
 			params.Interactor.Output("Running GreetingFlow...")
 
 			// Run the GreetingFlow
-			greeting, err := greetingFlow.Run(context.Background(), name)
+			response, err := greetingFlowRunner.Run(context.Background(), name)
 			if err != nil {
 				params.Interactor.Error("GreetingFlow execution failed", err)
 				return err
+			}
+
+			greeting, ok := response.(string)
+			if !ok {
+				typeErr := errors.New("flow response is not of expected type (string)")
+				params.Interactor.Error("Flow response type error", typeErr)
+				return typeErr
 			}
 
 			params.Interactor.Output(fmt.Sprintf("Flow response: %s", greeting))

@@ -6,6 +6,7 @@ import (
 	"file4you/internal/cli/fs"
 	"file4you/internal/cli/git"
 	"file4you/internal/cli/workspace"
+	"file4you/internal/config" // Added for configuration loading
 	"file4you/internal/db"
 	"file4you/internal/deskfs"
 	"file4you/internal/terminal"
@@ -17,6 +18,12 @@ import (
 )
 
 func main() {
+	// Load application configuration
+	if _, err := config.LoadConfig(""); err != nil {
+		slog.Error("Failed to load application configuration:", "msg", err)
+		os.Exit(1)
+	}
+
 	// Setup the Dependancy Injection
 
 	term := terminal.NewTerminal()
@@ -50,7 +57,7 @@ func main() {
 	// might iterate over this palette (e.g., to add commands).
 	// The Genkit initialization in OnInitialize will happen *after* NewRoot has run
 	// but *before* any command's RunE is executed.
-	rootParams.Palette = generatePalette(rootParams) 
+	rootParams.Palette = generatePalette(rootParams)
 
 	rootCmd := cli.NewRootCMD(rootParams)
 
@@ -75,7 +82,7 @@ func generatePalette(params *cli.CmdParams) []*cobra.Command {
 	organize := cli.NewFile4YouCMD(fs.NewOrganize(params)).Root
 	workspaceCmd := workspace.NewWorkspace(params)
 	ws := cli.NewFile4YouCMD(workspaceCmd).Root
-	greetCmd := cli_util.NewGreetCmd(params) 
+	greetCmd := cli_util.NewGreetCmd(params)
 
 	// Add commands here
 	return []*cobra.Command{
@@ -83,8 +90,8 @@ func generatePalette(params *cli.CmdParams) []*cobra.Command {
 		helpUtil,
 		versionUtil,
 		upgradeUtil,
-		backupUtil, // Added Backup command to palette
-		clearUtil,  // Added Clear command to palette
+		backupUtil, 
+		clearUtil,
 		organize,
 		ws,
 		greetCmd,

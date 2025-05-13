@@ -1,64 +1,94 @@
-// Package genkithandler provides integration with the genkit AI platform.
+// Package genkithandler provides a simplified interface for integrating with Genkit.
 package genkithandler
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
+"context"
+// "fmt" // No longer needed directly for error formatting here
 
-	"file4you/internal/db"
-	"file4you/internal/deskfs"
-
-	"github.com/firebase/genkit/go/genkit"
+"file4you/internal/genkithandler/errors" // Import custom errors
+"github.com/firebase/genkit/go/ai"
+"github.com/firebase/genkit/go/genkit"
 )
 
-// RegisterBackupTool defines and registers the 'performBackup' tool with the provided Genkit instance.
-// This tool encapsulates the core logic for backing up application data from DeskFS and CentralDB.
-// It is designed to be callable by an LLM as part of a Genkit flow.
-func RegisterBackupTool(g *genkit.Genkit, dfs *deskfs.DesktopFS, cdb *db.CentralDBProvider) {
-	// TODO: Replace this stub with proper Genkit API usage when available
-	slog.Info("RegisterBackupTool called - using stub implementation")
-
-	// For now, we'll stub out what would happen if the tool was called directly
-	// These functions still work without relying on the Genkit implementation
-	var performBackup = func(ctx context.Context, _ BackupToolInput) (BackupToolOutput, error) {
-		var output BackupToolOutput
-		var err error
-
-		// Perform DeskFS backup
-		output.DeskFSBackupPath, err = dfs.Backup()
-		if err != nil {
-			slog.Error("DeskFS backup failed", "error", err)
-			return BackupToolOutput{}, fmt.Errorf("DeskFS backup failed: %w", err)
-		}
-
-		// Perform CentralDB backup
-		output.CentralDBBackupPath, err = cdb.Backup()
-		if err != nil {
-			slog.Error("CentralDB backup failed", "error", err)
-			return BackupToolOutput{}, fmt.Errorf("CentralDB backup failed (DeskFS backup completed at %s): %w", 
-				output.DeskFSBackupPath, err)
-		}
-
-		output.SuccessMessage = fmt.Sprintf("Backup tool executed successfully. DeskFS backup at '%s', CentralDB backup at '%s'.",
-			output.DeskFSBackupPath, output.CentralDBBackupPath)
-		return output, nil
-	}
-
-	// Keep a reference to the function to avoid it being garbage collected
-	_ = performBackup
+// DefineTool defines a new Genkit tool (action) and registers it with the provided Genkit instance.
+// It's a wrapper around genkit.DefineTool.
+// The fn parameter is the actual tool implementation.
+// Its signature must match what genkit.DefineTool expects: func(ctx *ai.ToolContext, input In) (Out, error)
+func DefineTool[In, Out any](
+g *genkit.Genkit,
+name, description string,
+fn func(ctx *ai.ToolContext, input In) (Out, error),
+) (ai.Tool, error) {
+if g == nil {
+return nil, errors.New("genkit instance is nil")
+}
+if name == "" {
+return nil, errors.New("tool name cannot be empty")
+}
+if description == "" {
+// Consider if description can be optional or if an error is appropriate.
+// For now, maintaining previous logic.
+return nil, errors.New("tool description cannot be empty")
+}
+if fn == nil {
+return nil, errors.New("tool function (fn) cannot be nil")
 }
 
-// RegisterOrganizeTool defines and registers the 'organizeDirectory' tool with the provided Genkit instance.
-// This tool provides AI-powered directory organization capabilities.
-func RegisterOrganizeTool(g *genkit.Genkit, dfs *deskfs.DesktopFS) {
-	// TODO: Implement this function when directory organization functionality is ready
-	slog.Info("RegisterOrganizeTool called - not implemented yet")
+// genkit.DefineTool takes the Genkit instance, name, description, and the function.
+tool := genkit.DefineTool(g, name, description, fn)
+if tool == nil {
+// This condition might be hard to hit if DefineTool panics or always returns non-nil.
+return nil, errors.Errorf("failed to define tool %s", name)
+}
+return tool, nil
 }
 
-// RegisterWorkspaceTool defines and registers the 'manageWorkspace' tool with the provided Genkit instance.
-// This tool allows AI to help manage and configure workspaces.
-func RegisterWorkspaceTool(g *genkit.Genkit, dfs *deskfs.DesktopFS) {
-	// TODO: Implement this function when workspace management functionality is ready
-	slog.Info("RegisterWorkspaceTool called - not implemented yet")
+// LookupTool retrieves a previously defined Genkit tool by its name from the Genkit instance.
+// Returns nil if the tool is not found.
+// Note: The original audit mentioned genkit.LookupTool returns (tool, error).
+// The provided file content shows it returns ai.Tool directly. Adhering to file content.
+func LookupTool(g *genkit.Genkit, name string) ai.Tool {
+if g == nil || name == "" {
+return nil
+}
+return genkit.LookupTool(g, name)
+}
+
+// ExecuteTool looks up a tool by name and executes it with the provided input.
+// This is a convenience wrapper.
+func ExecuteTool[In, Out any](
+ctx context.Context,
+g *genkit.Genkit,
+toolName string,
+input In,
+) (Out, error) {
+var zeroOut Out
+if g == nil {
+return zeroOut, errors.New("genkit instance is nil")
+}
+if toolName == "" {
+return zeroOut, errors.New("tool name cannot be empty for execution")
+}
+
+tool := LookupTool(g, toolName)
+if tool == nil {
+return zeroOut, errors.NewToolNotFoundError(toolName, nil)
+}
+
+// ai.Tool has a Run method, but it's not generic. It's RunRaw(ctx context.Context, input any) (any, error)
+outputRaw, err := tool.RunRaw(ctx, input)
+if err != nil {
+return zeroOut, errors.Wrapf(err, "tool '%s' execution failed", toolName)
+}
+
+output, ok := outputRaw.(Out)
+if !ok {
+// If outputRaw is nil and Out is a pointer type or interface, this might be a valid scenario.
+// However, if Out is a non-pointer struct, and outputRaw is nil, this assertion fails.
+// Or, the types simply mismatch.
+typeErr := errors.Errorf("tool '%s' executed, but output type assertion to %T failed (actual type: %T)", toolName, zeroOut, outputRaw)
+return zeroOut, errors.WithCode(typeErr, "TYPE_ASSERTION_FAILED")
+}
+
+return output, nil
 }

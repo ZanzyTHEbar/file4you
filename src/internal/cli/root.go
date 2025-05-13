@@ -23,6 +23,7 @@ package cli
 
 import (
 	"context" // Added for Genkit initialization
+	"errors"
 	"fmt"
 
 	"file4you/internal"
@@ -30,6 +31,7 @@ import (
 	"file4you/internal/genkithandler" // Added for Genkit functions
 
 	"github.com/ZanzyTHEbar/go-basetools/logger"
+	"github.com/firebase/genkit/go/genkit"
 	"github.com/spf13/cobra"
 	// "github.com/spf13/viper" // Viper instance was unused
 )
@@ -69,24 +71,36 @@ func NewRoot(params *CmdParams) *cobra.Command {
 		// params.DeskFS.InstanceConfig is *deskfs.DeskFSConfig
 		// deskfs.DeskFSConfig embeds gobaselogger.Config
 		// So, params.DeskFS.InstanceConfig.Config is the embedded gobaselogger.Config
-		logger.InitLogger(&params.DeskFS.InstanceConfig.Config) 
+		logger.InitLogger(&params.DeskFS.InstanceConfig.Config)
 
 		// Accessing Logger.Level from the embedded gobaselogger.Config
 		params.Interactor.Outputf("Configuration loaded. Log level set to: %s", params.DeskFS.InstanceConfig.Logger.Level)
 
 		// Initialize Genkit
 		params.Interactor.Output("Initializing Genkit...")
-		genkitInstance, err := genkithandler.InitializeGenkit(context.Background())
+		genkitInstanceInter, err := genkithandler.InitializeGenkit(context.Background())
 		if err != nil {
 			params.Interactor.Fatal("Failed to initialize Genkit", err)
 			return // Exit if Genkit initialization fails
 		}
-		params.Genkit = genkitInstance
+
+		// Type assert the returned interface{} to *genkit.Genkit
+		genkitActualInstance, ok := genkitInstanceInter.(*genkit.Genkit)
+		if !ok {
+			// This should ideally not happen if InitializeGenkit behaves as expected
+			params.Interactor.Fatal("Failed to assert Genkit instance type", errors.New("genkit instance type assertion failed"))
+			return
+		}
+		params.Genkit = genkitActualInstance // Store the *genkit.Genkit instance
 		params.Interactor.Success("Genkit initialized successfully.")
 
 		// Register Genkit flows
 		params.Interactor.Output("Registering Genkit flows...")
-		if err := genkithandler.RegisterFlows(params.Genkit); err != nil {
+		// RegisterFlows now takes context.Context as its first argument.
+		// params.Genkit is *genkit.Genkit, not context.
+		// We should pass a context, e.g., context.Background() or a command context if available.
+		// The legacy RegisterFlows uses the defaultGenkitInstance internally, so context is for its operations.
+		if err := genkithandler.RegisterFlows(context.Background()); err != nil {
 			params.Interactor.Fatal("Failed to register Genkit flows", err)
 			return // Exit if flow registration fails
 		}
@@ -102,9 +116,7 @@ func NewRoot(params *CmdParams) *cobra.Command {
 		// Ensure CentralDB is initialized and available in params
 		if params.CentralDB == nil {
 			params.Interactor.Info("CentralDB not found in params, attempting to initialize with default settings...")
-			// db.NewCentralDBProvider() currently uses its own internal logic for path/config
-			// and does not take DSN/Type from DeskFSConfig at this point.
-			cdb, err := db.NewCentralDBProvider() // Call without arguments
+			cdb, err := db.NewCentralDBProvider()
 			if err != nil {
 				params.Interactor.Fatal("Failed to initialize CentralDB for tool registration", err)
 				return
@@ -115,7 +127,12 @@ func NewRoot(params *CmdParams) *cobra.Command {
 			params.Interactor.Info("CentralDB already initialized, proceeding with tool registration.")
 		}
 
-		genkithandler.RegisterBackupTool(params.Genkit, params.DeskFS, params.CentralDB)
+		// Use LegacyRegisterBackupTool. It takes the genkit instance (params.Genkit), DeskFS, and CentralDB.
+		// The first argument to LegacyRegisterBackupTool was gInter interface{}, which is the *genkit.Genkit instance.
+		genkithandler.LegacyRegisterBackupTool(params.Genkit, params.DeskFS, params.CentralDB)
+		// Similarly for other tools if they are to be registered here:
+		// genkithandler.RegisterOrganizeTool(params.Genkit, params.DeskFS)
+		// genkithandler.RegisterWorkspaceTool(params.Genkit, params.DeskFS)
 		params.Interactor.Success("Genkit tools registered successfully.")
 	})
 
