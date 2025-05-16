@@ -68,51 +68,26 @@ Targets can be:
 				return initErr
 			}
 
-			flowRunnerInter := genkithandler.GetBackupFlow()
-			if flowRunnerInter == nil {
-				flowRetrievalErr := errors.New("BackupFlow runner not found; ensure it was registered")
-				params.Interactor.StopSpinner(false, "Failed to retrieve backup flow runner.")
-				params.Interactor.Error("Failed to retrieve flow runner", flowRetrievalErr)
-				return flowRetrievalErr
-			}
-
-			// Type assert to the specific runner type defined in legacy.go
-			type legacyFlowRunner interface {
-				Run(ctx context.Context, input interface{}) (interface{}, error)
-			}
-			backupFlowRunner, ok := flowRunnerInter.(legacyFlowRunner)
-			if !ok {
-				typeErr := errors.New("retrieved flow runner is not of expected type (legacyFlowRunner)")
-				params.Interactor.StopSpinner(false, "Type assertion failed for flow runner.")
-				params.Interactor.Error("Type assertion failed", typeErr)
-				return typeErr
-			}
-
-			// Prepare input for the backupFlow.
-			// This needs to match the expected input type of the BackupFlow
-			flowInput := genkithandler.BackupToolInput{
-				// Populate fields as necessary, e.g., from command flags or config
-				// For a generic "all" backup, these might be determined by the flow/tool itself.
-				// SourcePath:      "TBD: SourcePath from config or flags",
-				// DestinationPath: "TBD: DestinationPath from config or flags",
-				// BackupType:      "full", // Example
-			}
+			flowInput := genkithandler.BackupToolInput{}
 			// if target == "database" { flowInput.BackupTarget = "centraldb_only" } // Example for future extension
 
-			response, err := backupFlowRunner.Run(context.Background(), flowInput)
+			backupOutput, err := genkithandler.ExecuteFlow[genkithandler.BackupToolInput, *genkithandler.BackupToolOutput](
+				context.Background(),
+				params.Genkit,
+				"backupFlow",
+				flowInput,
+			)
 			if err != nil {
 				params.Interactor.StopSpinner(false, "Genkit backup flow failed.")
 				params.Interactor.Error(fmt.Sprintf("Genkit backupFlow execution failed for target '%s'", target), err)
 				return err
 			}
 
-			// Process the response
-			backupOutput, ok := response.(genkithandler.BackupToolOutput)
-			if !ok {
-				typeErr := errors.New("BackupFlow response is not of expected type BackupToolOutput")
-				params.Interactor.StopSpinner(false, "Flow response type error.")
-				params.Interactor.Error("Flow response type error", typeErr)
-				return typeErr
+			if backupOutput == nil {
+				respErr := errors.New("BackupFlow returned nil output")
+				params.Interactor.StopSpinner(false, "BackupFlow reported an error.")
+				params.Interactor.Error("BackupFlow reported an error", respErr)
+				return respErr
 			}
 
 			if backupOutput.Error() != "" {

@@ -3,6 +3,7 @@ package genkithandler
 
 import (
 	"context"
+	"fmt"
 
 	"file4you/internal/genkithandler/errors"
 
@@ -22,7 +23,7 @@ func DefineFlow[In, Out any](g *genkit.Genkit, name string, fn core.Func[In, Out
 	if fn == nil {
 		return nil, errors.New("flow function (fn) cannot be nil")
 	}
-	
+
 	flow := genkit.DefineFlow(g, name, fn)
 	if flow == nil {
 		// This condition might be hard to hit if DefineFlow panics or always returns non-nil.
@@ -74,13 +75,16 @@ func ExecuteFlow[In, Out any](ctx context.Context, g *genkit.Genkit, flowName st
 		return zeroOut, errors.NewFlowNotFoundError(flowName, nil)
 	}
 
-	typedFlow, ok := targetAction.(*core.Flow[In, Out, struct{}])
+	// DEBUG: Print the type of the targetAction for troubleshooting
+	fmt.Printf("DEBUG: Found flow '%s' with Go type: %T\n", flowName, targetAction)
+
+	typedFlow, ok := targetAction.(*core.ActionDef[In, Out, struct{}])
 	if !ok {
-		err := errors.Errorf("flow '%s' found, but it is not a non-streaming flow with the expected input/output types, or type assertion failed", flowName)
+		err := errors.Errorf("flow '%s' found, but it is not a non-streaming flow with the expected input/output types, or type assertion failed (actual type: %T)", flowName, targetAction)
 		return zeroOut, errors.WithCode(err, "TYPE_ASSERTION_FAILED")
 	}
 
-	output, runErr := typedFlow.Run(ctx, input)
+	output, runErr := typedFlow.Run(ctx, input, nil)
 	if runErr != nil {
 		return zeroOut, errors.Wrapf(runErr, "error running flow '%s'", flowName)
 	}
@@ -161,6 +165,38 @@ func ExecuteStreamingFlow[In, Out, StreamChunk any](
 	// finalOutput might be its zero value or incomplete. This function cannot distinguish
 	// that from a flow that legitimately finishes with a zero/empty Out value without an Err field on result.
 	return finalOutput, nil
+}
+
+/*
+RegisterCoreFlows registers core flows (greetingFlow, backupFlow) using the new Genkit API.
+Call this during Genkit initialization.
+*/
+func RegisterCoreFlows(g *genkit.Genkit) error {
+	// Greeting flow
+	greetingHandler := func(ctx context.Context, name string) (string, error) {
+		return "Hello, " + name, nil
+	}
+	if _, err := DefineFlow[string, string](g, "greetingFlow", greetingHandler); err != nil {
+		return fmt.Errorf("failed to register greetingFlow: %w", err)
+	}
+
+	// Backup flow
+	backupHandler := func(ctx context.Context, input BackupToolInput) (*BackupToolOutput, error) {
+		// This should call the performBackup tool using ExecuteTool
+		output, toolErr := ExecuteTool[BackupToolInput, *BackupToolOutput](ctx, g, "performBackup", input)
+		if toolErr != nil {
+			return nil, fmt.Errorf("error executing performBackup tool in backupFlow: %w", toolErr)
+		}
+		if output == nil {
+			return nil, fmt.Errorf("performBackup tool returned nil output")
+		}
+		return output, nil
+	}
+	if _, err := DefineFlow(g, "backupFlow", backupHandler); err != nil {
+		return fmt.Errorf("failed to register backupFlow: %w", err)
+	}
+
+return nil
 }
 
 // The `DefineFlow` and `DefineStreamingFlow` functions return the created flow

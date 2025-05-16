@@ -7,10 +7,12 @@ import (
 	"log/slog"
 
 	"file4you/internal/config"
-	"file4you/internal/genkithandler/errors" // For potential error wrapping
+	"file4you/internal/db"
+	"file4you/internal/deskfs"
+	"file4you/internal/genkithandler/errors"
 
-	"github.com/firebase/genkit/go/ai"   // For ai.WithPrompt and ai.GenerateResponse
-	"github.com/firebase/genkit/go/core" // For core.Func type
+	"github.com/firebase/genkit/go/ai"
+	"github.com/firebase/genkit/go/core"
 	"github.com/firebase/genkit/go/genkit"
 )
 
@@ -20,23 +22,21 @@ type Service struct {
 	g             *genkit.Genkit
 	cfg           config.File4YouGenkitHandlerConfig
 	promptsDir    string
-	loadedPrompts map[string]Prompt // To store loaded prompts
+	loadedPrompts map[string]Prompt
 }
 
 // NewService initializes a new Genkit instance and returns a Service.
 // It uses the globally loaded AppConfig.
-func NewService(ctx context.Context) (*Service, error) {
-	// Ensure config.LoadConfig() has been called at application startup.
+func NewService(ctx context.Context, dfs *deskfs.DesktopFS, cdb *db.CentralDBProvider) (*Service, error) {
+	
 	appCfg := config.AppConfig
 
 	// Load prompts
 	prompts, err := LoadPrompts(appCfg.Genkit.Prompts.Directory)
 	if err != nil {
-		// LoadPrompts currently logs errors internally and returns an empty map if dir is missing.
-		// If it were to return an error for critical issues:
+	
 		slog.Error("Failed to load prompts for Genkit handler", "directory", appCfg.Genkit.Prompts.Directory, "error", err)
-		// Depending on requirements, you might want to return err here and fail service creation.
-		// For now, we proceed with potentially empty prompts.
+		return nil, fmt.Errorf("failed to load prompts: %w", err)
 	}
 
 	// Prepare Genkit options based on configuration
@@ -126,11 +126,12 @@ func NewService(ctx context.Context) (*Service, error) {
 		loadedPrompts: prompts,
 	}
 
-	// Register example flows (and eventually all core flows)
-	if err := s.registerExampleFlows(ctx); err != nil {
-		// Depending on severity, you might want to fail service creation
-		slog.Error("Failed to register example flows", "error", err)
-		// return nil, fmt.Errorf("failed to register example flows: %w", err)
+	// Register tools before flows so flows can call tools
+	if err := RegisterCoreTools(s.g, dfs, cdb); err != nil {
+		slog.Error("Failed to register core tools", "error", err)
+	}
+	if err := RegisterCoreFlows(s.g); err != nil {
+		slog.Error("Failed to register core flows", "error", err)
 	}
 
 	return s, nil

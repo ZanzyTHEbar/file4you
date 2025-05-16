@@ -23,7 +23,6 @@ package cli
 
 import (
 	"context" // Added for Genkit initialization
-	"errors"
 	"fmt"
 
 	"file4you/internal"
@@ -31,7 +30,6 @@ import (
 	"file4you/internal/genkithandler" // Added for Genkit functions
 
 	"github.com/ZanzyTHEbar/go-basetools/logger"
-	"github.com/firebase/genkit/go/genkit"
 	"github.com/spf13/cobra"
 	// "github.com/spf13/viper" // Viper instance was unused
 )
@@ -76,51 +74,33 @@ func NewRoot(params *CmdParams) *cobra.Command {
 		// Accessing Logger.Level from the embedded gobaselogger.Config
 		params.Interactor.Outputf("Configuration loaded. Log level set to: %s", params.DeskFS.InstanceConfig.Logger.Level)
 
-		// Initialize Genkit
 		params.Interactor.Output("Initializing Genkit...")
-		genkitInstanceInter, err := genkithandler.InitializeGenkit(context.Background())
-		if err != nil {
-			params.Interactor.Fatal("Failed to initialize Genkit", err)
-			return // Exit if Genkit initialization fails
-		}
-
-		// Type assert the returned interface{} to *genkit.Genkit
-		genkitActualInstance, ok := genkitInstanceInter.(*genkit.Genkit)
-		if !ok {
-			// This should ideally not happen if InitializeGenkit behaves as expected
-			params.Interactor.Fatal("Failed to assert Genkit instance type", errors.New("genkit instance type assertion failed"))
-			return
-		}
-		params.Genkit = genkitActualInstance // Store the *genkit.Genkit instance
-		params.Interactor.Success("Genkit initialized successfully.")
-
-		// Register Genkit tools
-		params.Interactor.Output("Registering Genkit tools...")
 		if params.DeskFS == nil {
-			params.Interactor.Fatal("DeskFS not initialized, cannot register tools", nil)
+			params.Interactor.Fatal("DeskFS not initialized, cannot initialize Genkit", nil)
 			return
 		}
-
-		// Ensure CentralDB is initialized and available in params
 		if params.CentralDB == nil {
 			params.Interactor.Info("CentralDB not found in params, attempting to initialize with default settings...")
 			cdb, err := db.NewCentralDBProvider()
 			if err != nil {
-				params.Interactor.Fatal("Failed to initialize CentralDB for tool registration", err)
+				params.Interactor.Fatal("Failed to initialize CentralDB for Genkit", err)
 				return
 			}
 			params.CentralDB = cdb
-			params.Interactor.Success("CentralDB initialized successfully for tool registration.")
+			params.Interactor.Success("CentralDB initialized successfully for Genkit.")
 		} else {
-			params.Interactor.Info("CentralDB already initialized, proceeding with tool registration.")
+			params.Interactor.Info("CentralDB already initialized, proceeding with Genkit initialization.")
 		}
 
-		// Use LegacyRegisterBackupTool. It takes the genkit instance (params.Genkit), DeskFS, and CentralDB.
-		// The first argument to LegacyRegisterBackupTool was gInter interface{}, which is the *genkit.Genkit instance.
-		genkithandler.LegacyRegisterBackupTool(params.Genkit, params.DeskFS, params.CentralDB)
-		// Similarly for other tools if they are to be registered here:
-		// genkithandler.RegisterOrganizeTool(params.Genkit, params.DeskFS)
-		// genkithandler.RegisterWorkspaceTool(params.Genkit, params.DeskFS)
+		service, err := genkithandler.NewService(context.Background(), params.DeskFS, params.CentralDB)
+		if err != nil {
+			params.Interactor.Fatal("Failed to initialize Genkit", err)
+			return
+		}
+		params.Genkit = service.Genkit()
+		params.Interactor.Success("Genkit initialized successfully.")
+
+		// Register Genkit tools (already handled in NewService via RegisterCoreTools)
 		params.Interactor.Success("Genkit tools registered successfully.")
 	})
 
