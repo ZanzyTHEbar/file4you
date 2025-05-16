@@ -22,16 +22,17 @@ THE SOFTWARE.
 package cli
 
 import (
-	"context" // Added for Genkit initialization
+	"context"
 	"fmt"
+	"log/slog"
+	"os"
 
 	"file4you/internal"
-	"file4you/internal/db"            // Added for CentralDB initialization
-	"file4you/internal/genkithandler" // Added for Genkit functions
+	"file4you/internal/config"
+	"file4you/internal/db"
+	"file4you/internal/genkithandler"
 
-	"github.com/ZanzyTHEbar/go-basetools/logger"
 	"github.com/spf13/cobra"
-	// "github.com/spf13/viper" // Viper instance was unused
 )
 
 var cfgFile string
@@ -65,15 +66,21 @@ func NewRoot(params *CmdParams) *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", fmt.Sprintf("config file (default %s)", internal.DefaultGlobalConfigFile))
 
 	cobra.OnInitialize(func() {
+		// Load global application configuration first.
+		// The cfgFile variable from PersistentFlags can be used here if provided.
+		if _, err := config.LoadConfig(cfgFile); err != nil {
+			// Use interactor if available, otherwise fallback to slog/fmt for early errors.
+			if params.Interactor != nil {
+				params.Interactor.Fatal("Failed to load application configuration", err)
+			} else {
+				slog.Error("Failed to load application configuration:", "error", err)
+				os.Exit(1)
+			}
+			return
+		}
+
 		params.DeskFS.InitConfig(cfgFile, params.Interactor)
-		// params.DeskFS.InstanceConfig is *deskfs.DeskFSConfig
-		// deskfs.DeskFSConfig embeds gobaselogger.Config
-		// So, params.DeskFS.InstanceConfig.Config is the embedded gobaselogger.Config
-		logger.InitLogger(&params.DeskFS.InstanceConfig.Config)
-
-		// Accessing Logger.Level from the embedded gobaselogger.Config
-		params.Interactor.Outputf("Configuration loaded. Log level set to: %s", params.DeskFS.InstanceConfig.Logger.Level)
-
+		// The rest of the Genkit initialization seems okay, assuming DeskFS and CentralDB are correctly initialized.
 		params.Interactor.Output("Initializing Genkit...")
 		if params.DeskFS == nil {
 			params.Interactor.Fatal("DeskFS not initialized, cannot initialize Genkit", nil)

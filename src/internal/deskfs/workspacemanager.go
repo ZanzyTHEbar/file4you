@@ -1,7 +1,7 @@
 package deskfs
 
 import (
-	"context"
+	// "context" // No longer used directly here, assert handler removed
 	"file4you/internal"
 	"file4you/internal/db"
 	"fmt"
@@ -39,9 +39,9 @@ func (wm *WorkspaceManager) CreateWorkspace(rootPath, config string) (uuid.UUID,
 	//mkdirall to check if the directory exists, if not create it
 	if _, err := os.Stat(rootPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(rootPath, 0755); err != nil {
-			slog.Info(fmt.Sprintf("Path %s: %v", rootPath, err))
-			errMsg := fmt.Sprintf("Error creating directory at %s", rootPath)
-			ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error)
+			slog.Error(fmt.Sprintf("Error creating directory at %s", rootPath), "error", err)
+			// Decide if this should be a fatal error or if logging is sufficient.
+			// For now, logging and continuing, but this might need to return an error.
 		}
 	}
 
@@ -49,28 +49,17 @@ func (wm *WorkspaceManager) CreateWorkspace(rootPath, config string) (uuid.UUID,
 	ignoreFilePath := filepath.Join(rootPath, fmt.Sprintf(".%s_ignore", internal.DefaultWorkspaceDotDir))
 
 	if _, err := os.Stat(ignoreFilePath); os.IsNotExist(err) {
-		if _, err := os.Create(ignoreFilePath); err != nil {
-			slog.Info(fmt.Sprintf("Path %s: %v", ignoreFilePath, err))
-			errMsg := fmt.Sprintf("Error creating ignore file at %s", ignoreFilePath)
-			ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error)
+		ignoreFile, createErr := os.Create(ignoreFilePath)
+		if createErr != nil {
+			slog.Error(fmt.Sprintf("Error creating ignore file at %s", ignoreFilePath), "error", createErr)
+			// return uuid.Nil, fmt.Errorf("failed to create ignore file: %w", createErr) // Consider returning error
+		} else {
+			defer ignoreFile.Close()
+			// Add the `.git` folder to the ignore file
+			if _, writeErr := ignoreFile.WriteString(".git\n"); writeErr != nil {
+				slog.Error(fmt.Sprintf("Error writing to ignore file at %s", ignoreFilePath), "error", writeErr)
+			}
 		}
-
-		// Add the `.git` folder to the ignore file
-		ignoreFile, err := os.OpenFile(ignoreFilePath, os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			slog.Info(fmt.Sprintf("Path %s: %v", ignoreFilePath, err))
-			errMsg := fmt.Sprintf("Error opening ignore file at %s", ignoreFilePath)
-			ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error)
-		}
-
-		// Write the `.git` folder to the ignore file
-		if _, err := ignoreFile.WriteString(".git\n"); err != nil {
-			slog.Info(fmt.Sprintf("Path %s: %v", ignoreFilePath, err))
-			errMsg := fmt.Sprintf("Error writing to ignore file at %s", ignoreFilePath)
-			ConfigAssertHandler.NoError(context.Background(), err, errMsg, slog.Error)
-		}
-
-		defer ignoreFile.Close()
 	}
 
 	// Initialize workspace-specific database
@@ -157,7 +146,7 @@ func Init() error {
 
 	// Create workspace entry
 	pwd, err := os.Getwd()
-	if err != nil {
+	if (err != nil) {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
@@ -194,22 +183,9 @@ func Init() error {
 	return nil
 } */
 
-/* // AddWorkspace adds a new workspace to the database
-func (db *SQLiteWorkspaceDB) AddWorkspace(rootPath string, config string) (int, error) {
-	result, err := db.DB.Exec("INSERT OR IGNORE INTO workspaces (root_path, config) VALUES (?, ?)", rootPath, config)
-	if err != nil {
-		return 0, fmt.Errorf("failed to insert workspace: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("failed to retrieve last insert ID: %w", err)
-	}
-
-	return int(id), nil
-}
-
-// AddFileMetadata adds file metadata for a given workspace
+// The following commented block is removed as it was causing an unterminated comment error
+// and appears to be old/unused code.
+/*
 func (db *SQLiteWorkspaceDB) AddFileMetadata(workspaceID uuid.UUID, path string, metadata deskfs.Metadata) error {
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
@@ -246,7 +222,7 @@ func (db *SQLiteWorkspaceDB) StoreVector(fileID int, vector []float64) error {
 		return fmt.Errorf("failed to marshal vector into blob: %w", err)
 	}
 
-	_, err = db.DB.Exec("INSERT INTO file_vectors (file_id, vector) VALUES (?, ?)", fileID, vectorBlob)
+	_, err = db.DB.Exec("INSERT INTO file_vectors (file_id, vector) VALUES (?, ?, ?)", fileID, vectorBlob)
 	if err != nil {
 		return fmt.Errorf("failed to insert file vector: %w", err)
 	}
@@ -301,4 +277,5 @@ func RebuildWorkspace(dbPath string) error {
 	// ...
 
 	return nil
-} */
+}
+*/

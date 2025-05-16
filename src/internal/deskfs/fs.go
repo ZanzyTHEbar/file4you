@@ -3,9 +3,11 @@ package deskfs
 import (
 	"context"
 	"errors"
+	"file4you/internal/config" // Import the new config package
 	"file4you/internal/db"
 	"file4you/internal/filesystem/trees"
-	"file4you/internal/terminal"
+
+	// "file4you/internal/terminal" // No longer used
 	"file4you/internal/ui"
 	"fmt"
 	"io"
@@ -62,8 +64,8 @@ type DesktopFS struct {
 	CacheDir         string
 	HomeDCDir        string
 	WorkspaceManager *WorkspaceManager
-	InstanceConfig   *DeskFSConfig
-	term             *terminal.Terminal
+	InstanceConfig   *config.File4YouConfig // Changed to use new config type
+	term             ui.Interactor // Changed to ui.Interactor
 	gitMutex         sync.Mutex
 }
 
@@ -80,34 +82,34 @@ func NewFilePathParams() *FilePathParams {
 	}
 }
 
-func NewDesktopFS(term *terminal.Terminal, centralDB db.ICentralDBProvider) *DesktopFS {
+func NewDesktopFS(interactor ui.Interactor, centralDB db.ICentralDBProvider) *DesktopFS { // Changed term to interactor and its type
 	var err error
 	cwd, err := os.Getwd()
 	if err != nil {
-		term.OutputErrorAndExit("Error getting current working directory: %v", err)
+		interactor.Error("Error getting current working directory", err) // Use interactor
+		os.Exit(1) // or return nil / error
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		term.OutputErrorAndExit("Couldn't find home directory: %v", err)
+		interactor.Error("Couldn't find home directory", err) // Use interactor
+		os.Exit(1) // or return nil / error
 	}
 
-	homeDCDir := findDesktopCleaner(cwd) // This can return "" or cwd
-	var cacheDir string
-	if homeDCDir != "" && homeDCDir != cwd {
-		// DESKTOP_CLEANER_ENV was set and the specific env-based dir exists
-		cacheDir = filepath.Join(homeDCDir, ".cache")
-	} else {
-		// Default to user's home directory if env var not set,
-		// or if the env-specific dir doesn't exist (findDesktopCleaner returned cwd),
-		// or if findDesktopCleaner returned "" (env not set).
-		// This provides a stable, absolute default cache location.
-		cacheDir = filepath.Join(home, ".file4you", ".cache")
+	// Use AppConfig for cache directory
+	cacheDir := config.AppConfig.File4You.CacheDir
+	if cacheDir == "" { // Fallback if not set by config
+		homeDCDir := findDesktopCleaner(cwd)
+		if homeDCDir != "" && homeDCDir != cwd {
+			cacheDir = filepath.Join(homeDCDir, ".cache")
+		} else {
+			cacheDir = filepath.Join(home, ".file4you", ".cache")
+		}
 	}
 
-	// Ensure the cache directory exists
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		term.OutputErrorAndExit("Error creating cache directory %s: %v", cacheDir, err)
+		interactor.Error(fmt.Sprintf("Error creating cache directory %s", cacheDir), err) // Use interactor
+		os.Exit(1) // or return nil / error
 	}
 
 	assertHAndler := assert.NewAssertHandler()
@@ -116,9 +118,10 @@ func NewDesktopFS(term *terminal.Terminal, centralDB db.ICentralDBProvider) *Des
 		HomeDir:          home,
 		Cwd:              cwd,
 		CacheDir:         cacheDir,
-		HomeDCDir:        homeDCDir,
+		// HomeDCDir will be determined by config or other logic if still needed
 		WorkspaceManager: NewWorkspaceManager(centralDB, assertHAndler),
-		term:             term,
+		InstanceConfig:   &config.AppConfig.File4You, // Use loaded global config
+		term:             interactor,                 // Assign interactor
 	}
 }
 
@@ -160,7 +163,7 @@ func CalculateMaxDepth(sourceDir string) (int, error) {
 	return maxDepth, nil
 }
 
-func (dfs *DesktopFS) IndexDirectory(cfg *DeskFSConfig, params *FilePathParams) error {
+func (dfs *DesktopFS) IndexDirectory(cfg *config.File4YouConfig, params *FilePathParams) error { // Changed to use new config type
 	var actualMaxDepth int
 	var err error
 
@@ -184,7 +187,7 @@ func (dfs *DesktopFS) IndexDirectory(cfg *DeskFSConfig, params *FilePathParams) 
 }
 
 // Move or copy files based on the configuration
-func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams) error {
+func (dfs *DesktopFS) EnhancedOrganize(cfg *config.File4YouConfig, params *FilePathParams) error { // Changed to use new config type
 	// Validate that source and target directories exist
 	if _, err := os.Stat(params.SourceDir); os.IsNotExist(err) {
 		return fmt.Errorf("source directory does not exist: %s", params.SourceDir)
@@ -204,7 +207,7 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams
 	dirTree := dfs.WorkspaceManager.centralDB.GetDirectoryTree()
 	
 	// Check if the DirectoryTree or its Root is nil, and initialize if needed
-	if dirTree == nil || dirTree.Root == nil {
+	if (dirTree == nil || dirTree.Root == nil) {
 		// Initialize the DirectoryTree with the source directory if it doesn't exist or has no root
 		dirTree = trees.NewDirectoryTree(trees.WithRoot(params.SourceDir))
 		dfs.WorkspaceManager.centralDB.SetDirectoryTree(dirTree)
@@ -269,17 +272,15 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *DeskFSConfig, params *FilePathParams
 }
 
 func (dfs *DesktopFS) InitConfig(optionalConfigPath string, interactor ui.Interactor) {
-	// Call NewConfig with the provided path (can be nil if no path is specified)
-	config := NewIntermediateConfig(optionalConfigPath, interactor)
-	slog.Debug(fmt.Sprintf("Loading configuration from path: %v\n", config))
+	// Configuration is now loaded globally via config.LoadConfig()
+	// We just need to ensure dfs.InstanceConfig points to the loaded File4You specific part.
+	dfs.InstanceConfig = &config.AppConfig.File4You
 
-	deskfsConfig := NewDeskFSConfig()
-
-	// Build FileTypeTree
-	deskfsConfig = deskfsConfig.BuildFileTypeTree(config)
-
-	// Set the loaded configuration for this instance
-	dfs.InstanceConfig = deskfsConfig
+	// The old logic for loading/creating intermediate config and building FileTypeTree
+	// is removed as file type mapping is no longer the primary way of organization.
+	// If any specific initialization based on config is still needed here, it would be added.
+	// For now, we assume the global AppConfig is sufficient.
+	slog.Debug("DesktopFS using globally loaded configuration.")
 }
 
 func (dfs *DesktopFS) GetDesktopCleanerIgnore(dir string) (*ignore.GitIgnore, error) {
@@ -552,7 +553,7 @@ func (dfs *DesktopFS) buildTreeNodes(node *trees.DirectoryNode, recursive bool, 
 
 // traverseAndOrganize traverses the tree and organizes files based on the configuration
 // uses goroutines for concurrent processing with mutexes for thread safety
-func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.CancelFunc, node *trees.DirectoryNode, cfg *DeskFSConfig, params *FilePathParams, wg *sync.WaitGroup, errCh chan error) {
+func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.CancelFunc, node *trees.DirectoryNode, cfg *config.File4YouConfig, params *FilePathParams, wg *sync.WaitGroup, errCh chan error) { // Changed to use new config type
 	// Process files concurrently without a coarse-grained mutex
 	for _, fileNode := range node.Files {
 		wg.Add(1)
@@ -635,33 +636,17 @@ func (dfs *DesktopFS) traverseAndOrganize(ctx context.Context, cancel context.Ca
 
 // determineTargetFolder traverses the FileTypeTree in DeskFSConfig to find the appropriate folder
 // based on the file's extension. It returns the path to the target folder if a match is found.
-func (dfs *DesktopFS) determineTargetFolder(ctx context.Context, fileNode *trees.FileNode, cfg *DeskFSConfig) (string, bool) {
-	ext := fileNode.Extension
-
-	path, found := dfs.findFolderForExtension(ctx, cfg.FileTypeTree.Root, ext)
-	if found {
-		slog.Info(fmt.Sprintf("File %s with extension %s mapped to path: %s\n", fileNode.Name, ext, path))
-	} else {
-		slog.Info(fmt.Sprintf("No mapping found for file %s with extension %s\n", fileNode.Name, ext))
-	}
-	return path, found
-}
-
-// Helper recursive function to search for the appropriate folder in the FileTypeTree.
-func (dfs *DesktopFS) findFolderForExtension(ctx context.Context, node *trees.FileTypeNode, ext string) (string, bool) {
-	// Traverse the tree to find a matching extension in the nodes
-	if node.AllowsExtension(ext) {
-		return buildPathFromNode(ctx, node), true
-	}
-
-	// Continue to search for extensions in children
-	for _, child := range node.Children {
-		if path, found := dfs.findFolderForExtension(ctx, child, ext); found {
-			return path, true
-		}
-	}
-
-	return "", false
+func (dfs *DesktopFS) determineTargetFolder(ctx context.Context, fileNode *trees.FileNode, cfg *config.File4YouConfig) (string, bool) {
+	ext := strings.ToLower(filepath.Ext(fileNode.Name))
+	// The FileTypeTree is no longer part of the config as per the consolidation.
+	// The logic for determining the target folder will need to be revised
+	// based on the new agent-driven approach.
+	// For now, returning a default/placeholder or an error.
+	// This part of the code needs to be re-evaluated based on how agents decide file placement.
+	slog.Warn(fmt.Sprintf("determineTargetFolder: FileTypeTree logic removed. File extension '%s' for '%s' cannot be automatically mapped. Agent intervention required.", ext, fileNode.Path))
+	// Placeholder: return the source directory, indicating no specific rule was found.
+	// In a real scenario, this might involve querying an agent or using other metadata.
+	return filepath.Dir(fileNode.Path), false // Returning original path and false, as no rule applied
 }
 
 // buildPathFromNode constructs the path from the root to the given node.

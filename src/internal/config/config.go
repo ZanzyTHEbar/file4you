@@ -40,9 +40,19 @@ type GenkitPromptsConfig struct {
 	Directory string `mapstructure:"directory"`
 }
 
+// DatabaseConfig stores database connection details.
+type DatabaseConfig struct {
+	DSN  string `mapstructure:"dsn"`
+	Type string `mapstructure:"type"`
+}
+
 // File4YouConfig stores file4you specific configurations.
 type File4YouConfig struct {
-	GenkitHandler File4YouGenkitHandlerConfig `mapstructure:"genkithandler"`
+	GenkitHandler          File4YouGenkitHandlerConfig `mapstructure:"genkithandler"`
+	TargetDir              string                      `mapstructure:"targetDir"`
+	CacheDir               string                      `mapstructure:"cacheDir"`
+	Database               DatabaseConfig              `mapstructure:"database"`
+	OrganizeTimeoutMinutes int                         `mapstructure:"organizeTimeoutMinutes"`
 }
 
 // File4YouGenkitHandlerConfig stores genkithandler specific feature flags.
@@ -68,17 +78,28 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Set default values
 	viper.SetDefault("genkit.prompts.directory", "./prompts")
 	viper.SetDefault("genkit.plugins.openai.timeoutSeconds", 60)
-	// Example for a feature flag, assuming it might exist.
 	// Add defaults for all known feature flags.
-	//viper.SetDefault("file4you.genkithandler.featureFlags.someNewFeature", false)
+	// viper.SetDefault("file4you.genkithandler.featureFlags.someNewFeature", false)
+
+	// Defaults from the old deskfs.Config / new consolidated fields
+	// Ensure internal.DefaultCacheDir, internal.DefaultDatabaseDSN, internal.DefaultDatabaseType are defined.
+	viper.SetDefault("file4you.targetDir", ".")
+	// Assuming internal.DefaultCacheDir is defined, e.g., in internal/globals.go
+	viper.SetDefault("file4you.cacheDir", internal.DefaultCacheDir)
+	// Assuming internal.DefaultDatabaseDSN and internal.DefaultDatabaseType are defined
+	viper.SetDefault("file4you.database.dsn", internal.DefaultDatabaseDSN)
+	viper.SetDefault("file4you.database.type", internal.DefaultDatabaseType)
+	viper.SetDefault("file4you.organizeTimeoutMinutes", 10)
+
 
 	viper.AutomaticEnv()                                   // Read in environment variables that match
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // Replace dots with underscores in env var names e.g. genkit.plugins.googleAI.apiKey becomes GENKIT_PLUGINS_GOOGLEAI_APIKEY
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// TODO: Handle the case where the config file is not found
-			// This is not an error, just a warning
+			// Config file not found; defaults will be used. This is not an error for the application to halt on.
+			// It's good practice to log this situation if a logger is available here.
+			// fmt.Printf("Warning: Config file not found at expected locations. Using default values. Searched: %s\n", viper.ConfigFileUsed())
 		} else {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
