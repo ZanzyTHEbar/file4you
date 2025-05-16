@@ -88,7 +88,7 @@ func (up *Upgrade) CheckForUpgrade() {
 			up.term.ToggleSpinner(false, "")
 			up.RestartDesktopCleaner()
 		} else {
-			fmt.Println("Note: set DESKTOP_CLEANER_SKIP_UPGRADE=1 to stop upgrade prompts")
+			fmt.Println("Note: set FILE4YOU_SKIP_UPGRADE=1 to stop upgrade prompts")
 		}
 	}
 }
@@ -97,7 +97,7 @@ func (up *Upgrade) DoUpgrade(version string) error {
 	tag := fmt.Sprintf("cli/v%s", version)
 	escapedTag := url.QueryEscape(tag)
 
-	downloadURL := fmt.Sprintf("https://github.com/ZanzyTHEbar/DesktopCleaner/releases/download/%s/desktop_cleaner_%s_%s_%s.tar.gz", escapedTag, version, runtime.GOOS, runtime.GOARCH)
+	downloadURL := fmt.Sprintf("https://github.com/ZanzyTHEbar/DesktopCleaner/releases/download/%s/file4you_%s_%s_%s.tar.gz", escapedTag, version, runtime.GOOS, runtime.GOARCH)
 	resp, err := http.Get(downloadURL)
 	if err != nil {
 		return fmt.Errorf("failed to download the update: %w", err)

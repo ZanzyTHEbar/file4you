@@ -14,7 +14,7 @@ import (
 var CmdDesc = map[string][2]string{}
 
 func printCmds(w io.Writer, prefix string, colors []lipgloss.Color, cmds ...string) {
-	if os.Getenv("DESKTOP_CLEANER_DISABLE_SUGGESTIONS") != "" {
+	if os.Getenv("FILE4YOU_DISABLE_SUGGESTIONS") != "" {
 		return
 	}
 

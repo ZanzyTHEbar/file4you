@@ -65,17 +65,44 @@ Call this during Genkit initialization.
 func RegisterCoreTools(g *genkit.Genkit, dfs *deskfs.DesktopFS, cdb *db.CentralDBProvider) error {
 	// performBackup tool
 	backupToolHandler := func(ctx *ai.ToolContext, input BackupToolInput) (BackupToolOutput, error) {
-		deskFSPath := "mock/deskfs/backup/path"
-		centralDBPath := "mock/centraldb/backup/path"
-		successMsg := "Backup performed successfully (new system)."
 		if dfs == nil || cdb == nil {
 			return BackupToolOutput{}, errors.New("DeskFS or CentralDB provider is nil in backup tool")
 		}
-		return BackupToolOutput{
-			DeskFSBackupPath:    deskFSPath,
-			CentralDBBackupPath: centralDBPath,
-			Message:             successMsg,
-		}, nil
+		deskFSPath, err1 := dfs.Backup()
+		centralDBPath, err2 := cdb.Backup()
+		var msg string
+// Only return an error if both backups fail
+if err1 != nil && err2 != nil {
+    msg = fmt.Sprintf("Both backups failed: DeskFS: %v, CentralDB: %v", err1, err2)
+    return BackupToolOutput{
+        DeskFSBackupPath:    deskFSPath,
+        CentralDBBackupPath: centralDBPath,
+        Message:             msg,
+    }, errors.New(msg)
+}
+if err1 != nil {
+    msg = fmt.Sprintf("DeskFS backup failed: %v. CentralDB backup succeeded at: %s", err1, centralDBPath)
+    return BackupToolOutput{
+        DeskFSBackupPath:    deskFSPath,
+        CentralDBBackupPath: centralDBPath,
+        Message:             msg,
+    }, nil
+}
+if err2 != nil {
+    msg = fmt.Sprintf("CentralDB backup failed: %v. DeskFS backup succeeded at: %s", err2, deskFSPath)
+    return BackupToolOutput{
+        DeskFSBackupPath:    deskFSPath,
+        CentralDBBackupPath: centralDBPath,
+        Message:             msg,
+    }, nil
+}
+// Both succeeded: success message and nil error
+msg = fmt.Sprintf("Both backups succeeded: DeskFS at %s, CentralDB at %s", deskFSPath, centralDBPath)
+return BackupToolOutput{
+    DeskFSBackupPath:    deskFSPath,
+    CentralDBBackupPath: centralDBPath,
+    Message:             msg,
+}, nil
 	}
 	// DEBUG: Print tool registration
 	fmt.Println("DEBUG: Registering performBackup tool")

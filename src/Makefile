@@ -36,8 +36,8 @@ MODULE_PATH := cmd/app/file4you.go
 # Default target
 .DEFAULT_GOAL := build
 
-DEFAULT_DB_PATH = ~/.config/desktop_cleaner/central.db
-TEMP_PATHS =  /tmp/desktop_cleaner_test
+DEFAULT_DB_PATH = ~/.config/file4you/central.db
+TEMP_PATHS =  /tmp/file4you_test
 
 all: build
 

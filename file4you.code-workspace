@@ -14,7 +14,7 @@
     "files.exclude": {
       "**/.git": false,
       "**/.env": false,
-      "**/.desktop_cleaner": false
+      "**/.file4you": false
     },
     "editor.foldingStrategy": "indentation",
     "editor.formatOnSave": true,

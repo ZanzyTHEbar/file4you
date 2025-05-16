@@ -720,7 +720,7 @@ func findDesktopCleaner(baseDir string) string {
 	const devEnv = "development"
 	const prodEnv = "production"
 	const folderName = ".file4you"
-	const env = "DESKTOP_CLEANER_ENV"
+	const env = "FILE4YOU_ENV"
 
 	envValue, envSet := os.LookupEnv(env)
 

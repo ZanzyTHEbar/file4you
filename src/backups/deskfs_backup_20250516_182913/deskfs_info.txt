@@ -1,0 +1,6 @@
+DesktopFS Backup
+Timestamp: 20250516_182913
+Home Directory: /home/daofficialwizard
+Current Working Directory: /mnt/dragonnet/common/Projects/Personal/OpenSource/file4you/src
+Cache Directory: /home/daofficialwizard/.file4you/.cache
+Home DC Directory: 

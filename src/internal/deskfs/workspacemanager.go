@@ -46,7 +46,7 @@ func (wm *WorkspaceManager) CreateWorkspace(rootPath, config string) (uuid.UUID,
 	}
 
 	// create the ignore file
-	ignoreFilePath := filepath.Join(rootPath, ".desktop_cleaner_ignore")
+	ignoreFilePath := filepath.Join(rootPath, fmt.Sprintf(".%s_ignore", internal.DefaultWorkspaceDotDir))
 
 	if _, err := os.Stat(ignoreFilePath); os.IsNotExist(err) {
 		if _, err := os.Create(ignoreFilePath); err != nil {

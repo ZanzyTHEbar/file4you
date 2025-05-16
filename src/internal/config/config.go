@@ -1,7 +1,9 @@
 package config
 
 import (
+	"file4you/internal"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -16,8 +18,8 @@ type Config struct {
 
 // GenkitConfig stores Genkit related configurations.
 type GenkitConfig struct {
-Plugins   GenkitPluginsConfig   `mapstructure:"plugins"`
-Prompts   GenkitPromptsConfig   `mapstructure:"prompts"`
+	Plugins GenkitPluginsConfig `mapstructure:"plugins"`
+	Prompts GenkitPromptsConfig `mapstructure:"prompts"`
 }
 
 // GenkitPluginsConfig stores plugin configurations.
@@ -53,33 +55,31 @@ var AppConfig Config
 // LoadConfig reads configuration from file or environment variables.
 func LoadConfig(configPath string) (*Config, error) {
 	if configPath != "" {
-		viper.SetConfigFile(configPath) // Path to look for the config file in
+		viper.SetConfigFile(configPath)
 	} else {
-		viper.AddConfigPath(".")               // Look for config in current directory
-		viper.AddConfigPath("..")              // Look for config in parent directory (project root if running from src)
-		viper.AddConfigPath("/etc/file4you/")  // Path to look for the config file in
-		viper.AddConfigPath("$HOME/.file4you") // Call multiple times to add many search paths
-		viper.SetConfigName("config")          // Name of config file (without extension)
-		viper.SetConfigType("yaml")            // REQUIRED if the config file does not have the extension in the name
-}
+		viper.AddConfigPath(".")
+		viper.AddConfigPath("..")
+		viper.AddConfigPath(filepath.Join("etc", internal.DefaultAppName))
+		viper.AddConfigPath(internal.DefaultConfigPath)
+		viper.SetConfigName("config")
+		viper.SetConfigType("yaml")
+	}
 
-// Set default values
-viper.SetDefault("genkit.prompts.directory", "./prompts")
-viper.SetDefault("genkit.plugins.openai.timeoutSeconds", 60)
+	// Set default values
+	viper.SetDefault("genkit.prompts.directory", "./prompts")
+	viper.SetDefault("genkit.plugins.openai.timeoutSeconds", 60)
 	// Example for a feature flag, assuming it might exist.
 	// Add defaults for all known feature flags.
-	viper.SetDefault("file4you.genkithandler.featureFlags.someNewFeature", false)
+	//viper.SetDefault("file4you.genkithandler.featureFlags.someNewFeature", false)
 
 	viper.AutomaticEnv()                                   // Read in environment variables that match
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // Replace dots with underscores in env var names e.g. genkit.plugins.googleAI.apiKey becomes GENKIT_PLUGINS_GOOGLEAI_APIKEY
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found; ignore error if desired
-			// return nil, fmt.Errorf("config file not found: %w", err)
-			// For now, we'll allow the app to run with defaults or only env vars if config file is not present
+			// TODO: Handle the case where the config file is not found
+			// This is not an error, just a warning
 		} else {
-			// Config file was found but another error was produced
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 	}
