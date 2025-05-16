@@ -3,6 +3,7 @@ package genkithandler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"file4you/internal/db"
@@ -63,22 +64,22 @@ Call this during Genkit initialization.
 */
 func RegisterCoreTools(g *genkit.Genkit, dfs *deskfs.DesktopFS, cdb *db.CentralDBProvider) error {
 	// performBackup tool
-	backupToolHandler := func(ctx *ai.ToolContext, input BackupToolInput) (*BackupToolOutput, error) {
+	backupToolHandler := func(ctx *ai.ToolContext, input BackupToolInput) (BackupToolOutput, error) {
 		deskFSPath := "mock/deskfs/backup/path"
 		centralDBPath := "mock/centraldb/backup/path"
 		successMsg := "Backup performed successfully (new system)."
 		if dfs == nil || cdb == nil {
-			return nil, errors.New("DeskFS or CentralDB provider is nil in backup tool")
+			return BackupToolOutput{}, errors.New("DeskFS or CentralDB provider is nil in backup tool")
 		}
-		return &BackupToolOutput{
+		return BackupToolOutput{
 			DeskFSBackupPath:    deskFSPath,
 			CentralDBBackupPath: centralDBPath,
-			SuccessMessage:      successMsg,
+			Message:             successMsg,
 		}, nil
 	}
 	// DEBUG: Print tool registration
 	fmt.Println("DEBUG: Registering performBackup tool")
-	if _, err := DefineTool[BackupToolInput, *BackupToolOutput](g, "performBackup", "Performs a backup of application data.", backupToolHandler); err != nil {
+	if _, err := DefineTool[BackupToolInput, BackupToolOutput](g, "performBackup", "Performs a backup of application data.", backupToolHandler); err != nil {
 		return err
 	}
 
@@ -125,18 +126,24 @@ func ExecuteTool[In, Out any](
 		return zeroOut, errors.NewToolNotFoundError(toolName, nil)
 	}
 
-	// ai.Tool has a Run method, but it's not generic. It's RunRaw(ctx context.Context, input any) (any, error)
 	outputRaw, err := tool.RunRaw(ctx, input)
 	if err != nil {
 		return zeroOut, errors.Wrapf(err, "tool '%s' execution failed", toolName)
 	}
 
-	output, ok := outputRaw.(Out)
-	if !ok {
-		// If outputRaw is nil and Out is a pointer type or interface, this might be a valid scenario.
-		// However, if Out is a non-pointer struct, and outputRaw is nil, this assertion fails.
-		// Or, the types simply mismatch.
-		typeErr := errors.Errorf("tool '%s' executed, but output type assertion to %T failed (actual type: %T)", toolName, zeroOut, outputRaw)
+	var output Out
+	if m, ok := outputRaw.(map[string]interface{}); ok {
+		jsonData, err := json.Marshal(m)
+		if err != nil {
+			return zeroOut, errors.Wrapf(err, "failed to marshal tool '%s' output", toolName)
+		}
+		if err := json.Unmarshal(jsonData, &output); err != nil {
+			return zeroOut, errors.Wrapf(err, "failed to unmarshal tool '%s' output", toolName)
+		}
+	} else if typedOutput, ok := outputRaw.(Out); ok {
+		output = typedOutput
+	} else {
+		typeErr := errors.Errorf("unexpected output type for tool '%s': %T", toolName, outputRaw)
 		return zeroOut, errors.WithCode(typeErr, "TYPE_ASSERTION_FAILED")
 	}
 

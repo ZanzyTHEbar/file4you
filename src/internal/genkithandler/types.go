@@ -2,6 +2,8 @@
 package genkithandler
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 )
 
@@ -16,12 +18,11 @@ type BackupToolInput struct {
 type BackupToolOutput struct {
 	DeskFSBackupPath    string `json:"deskFSBackupPath,omitempty"`
 	CentralDBBackupPath string `json:"centralDBBackupPath,omitempty"`
-	SuccessMessage      string `json:"successMessage"`
-	ErrorMessage        string `json:"errorMessage,omitempty"`
+	Message             string `json:"message,omitempty"`
 }
 
-func (b *BackupToolOutput) Error() string {
-	return b.ErrorMessage
+func (b BackupToolOutput) Error() string {
+	return fmt.Sprintf("DeskFSBackupPath: %s, CentralDBBackupPath: %s, Message: %s", b.DeskFSBackupPath, b.CentralDBBackupPath, b.Message)
 }
 
 // SessionID generates a unique session identifier.

@@ -181,14 +181,10 @@ func RegisterCoreFlows(g *genkit.Genkit) error {
 	}
 
 	// Backup flow
-	backupHandler := func(ctx context.Context, input BackupToolInput) (*BackupToolOutput, error) {
-		// This should call the performBackup tool using ExecuteTool
-		output, toolErr := ExecuteTool[BackupToolInput, *BackupToolOutput](ctx, g, "performBackup", input)
+	backupHandler := func(ctx context.Context, input BackupToolInput) (BackupToolOutput, error) {
+		output, toolErr := ExecuteTool[BackupToolInput, BackupToolOutput](ctx, g, "performBackup", input)
 		if toolErr != nil {
-			return nil, fmt.Errorf("error executing performBackup tool in backupFlow: %w", toolErr)
-		}
-		if output == nil {
-			return nil, fmt.Errorf("performBackup tool returned nil output")
+			return BackupToolOutput{}, fmt.Errorf("error executing performBackup tool in backupFlow: %w", toolErr)
 		}
 		return output, nil
 	}
@@ -196,7 +192,7 @@ func RegisterCoreFlows(g *genkit.Genkit) error {
 		return fmt.Errorf("failed to register backupFlow: %w", err)
 	}
 
-return nil
+	return nil
 }
 
 // The `DefineFlow` and `DefineStreamingFlow` functions return the created flow

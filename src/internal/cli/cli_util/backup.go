@@ -1,12 +1,12 @@
 package cli_util
 
 import (
-	"context" // Added for Genkit flow execution
+	"context"
 	"errors"
 	"fmt"
 
 	"file4you/internal/cli"
-	"file4you/internal/genkithandler" // Added for Genkit flows and types
+	"file4you/internal/genkithandler"
 
 	"github.com/spf13/cobra"
 )
@@ -71,7 +71,7 @@ Targets can be:
 			flowInput := genkithandler.BackupToolInput{}
 			// if target == "database" { flowInput.BackupTarget = "centraldb_only" } // Example for future extension
 
-			backupOutput, err := genkithandler.ExecuteFlow[genkithandler.BackupToolInput, *genkithandler.BackupToolOutput](
+			backupOutput, err := genkithandler.ExecuteFlow[genkithandler.BackupToolInput, genkithandler.BackupToolOutput](
 				context.Background(),
 				params.Genkit,
 				"backupFlow",
@@ -83,13 +83,6 @@ Targets can be:
 				return err
 			}
 
-			if backupOutput == nil {
-				respErr := errors.New("BackupFlow returned nil output")
-				params.Interactor.StopSpinner(false, "BackupFlow reported an error.")
-				params.Interactor.Error("BackupFlow reported an error", respErr)
-				return respErr
-			}
-
 			if backupOutput.Error() != "" {
 				respErr := errors.New(backupOutput.Error())
 				params.Interactor.StopSpinner(false, "BackupFlow reported an error.")
@@ -99,7 +92,7 @@ Targets can be:
 
 			params.Interactor.StopSpinner(true, "Genkit backup flow completed successfully.")
 			params.Interactor.Success(fmt.Sprintf("Genkit backup flow for target '%s' finished.", target))
-			params.Interactor.Output(fmt.Sprintf("Flow Result: %s", backupOutput.SuccessMessage))
+			params.Interactor.Output(fmt.Sprintf("Flow Result: %s", backupOutput.Message))
 			if backupOutput.DeskFSBackupPath != "" {
 				params.Interactor.Output(fmt.Sprintf("DeskFS Backup Path: %s", backupOutput.DeskFSBackupPath))
 			}
