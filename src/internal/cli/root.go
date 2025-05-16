@@ -94,18 +94,6 @@ func NewRoot(params *CmdParams) *cobra.Command {
 		params.Genkit = genkitActualInstance // Store the *genkit.Genkit instance
 		params.Interactor.Success("Genkit initialized successfully.")
 
-		// Register Genkit flows
-		params.Interactor.Output("Registering Genkit flows...")
-		// RegisterFlows now takes context.Context as its first argument.
-		// params.Genkit is *genkit.Genkit, not context.
-		// We should pass a context, e.g., context.Background() or a command context if available.
-		// The legacy RegisterFlows uses the defaultGenkitInstance internally, so context is for its operations.
-		if err := genkithandler.RegisterFlows(context.Background()); err != nil {
-			params.Interactor.Fatal("Failed to register Genkit flows", err)
-			return // Exit if flow registration fails
-		}
-		params.Interactor.Success("Genkit flows registered successfully.")
-
 		// Register Genkit tools
 		params.Interactor.Output("Registering Genkit tools...")
 		if params.DeskFS == nil {

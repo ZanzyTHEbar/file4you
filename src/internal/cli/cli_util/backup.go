@@ -115,8 +115,8 @@ Targets can be:
 				return typeErr
 			}
 
-			if backupOutput.Error != "" {
-				respErr := errors.New(backupOutput.Error)
+			if backupOutput.Error() != "" {
+				respErr := errors.New(backupOutput.Error())
 				params.Interactor.StopSpinner(false, "BackupFlow reported an error.")
 				params.Interactor.Error("BackupFlow reported an error", respErr)
 				return respErr

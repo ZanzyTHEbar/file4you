@@ -17,6 +17,11 @@ type BackupToolOutput struct {
 	DeskFSBackupPath    string `json:"deskFSBackupPath,omitempty"`
 	CentralDBBackupPath string `json:"centralDBBackupPath,omitempty"`
 	SuccessMessage      string `json:"successMessage"`
+	ErrorMessage        string `json:"errorMessage,omitempty"`
+}
+
+func (b *BackupToolOutput) Error() string {
+	return b.ErrorMessage
 }
 
 // SessionID generates a unique session identifier.
