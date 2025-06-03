@@ -330,8 +330,6 @@ github.com/fatih/color v1.18.0 h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM=
 github.com/fatih/color v1.18.0/go.mod h1:4FelSpRwEGDpQ12mAdzqdOukCy4u8WUtOY6lkT/6HfU=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
-github.com/firebase/genkit/go v0.5.3 h1:c1FOCndvcCwbVRcopzTqkXN9iw67hsFBtvnihRuuzkw=
-github.com/firebase/genkit/go v0.5.3/go.mod h1:lnkagYhZ371ri3w4P5FJjw3irPwYaGvPFJqGf2BLG54=
 github.com/firebase/genkit/go v0.5.4 h1:/DjBkrDf3hdFnucA3X6ysYIfzy+5lD7vUopPC64SCW8=
 github.com/firebase/genkit/go v0.5.4/go.mod h1:+YRtLa+m5EQLU6B0ukcrhaeukNeJx1EKYvTOFqdp9NI=
 github.com/frankban/quicktest v1.14.3/go.mod h1:mgiwOwqx65TmIk1wJ6Q7wvnVMocbUorkibMOrVTHZps=
@@ -1221,8 +1219,6 @@ google.golang.org/appengine v1.6.1/go.mod h1:i06prIuMbXzDqacNJfV5OdTW448YApPu5ww
 google.golang.org/appengine v1.6.5/go.mod h1:8WjMMxjGQR8xUklV/ARdw2HLXBOI7O7uCIDZVag1xfc=
 google.golang.org/appengine v1.6.6/go.mod h1:8WjMMxjGQR8xUklV/ARdw2HLXBOI7O7uCIDZVag1xfc=
 google.golang.org/appengine v1.6.7/go.mod h1:8WjMMxjGQR8xUklV/ARdw2HLXBOI7O7uCIDZVag1xfc=
-google.golang.org/genai v1.2.0 h1:noBlyXculPtMqyYdAkoXu/IdkgncP+JxNqXfEoMk/5E=
-google.golang.org/genai v1.2.0/go.mod h1:TyfOKRz/QyCaj6f/ZDt505x+YreXnY40l2I6k8TvgqY=
 google.golang.org/genai v1.5.0 h1:6wB3MCW4JpCMHURJH2gBNxCU/9iN1YjKYQj362mDTbY=
 google.golang.org/genai v1.5.0/go.mod h1:TyfOKRz/QyCaj6f/ZDt505x+YreXnY40l2I6k8TvgqY=
 google.golang.org/genproto v0.0.0-20180817151627-c66870c02cf8/go.mod h1:JiN7NxoALGmiZfu7CAH4rXhgtRTLTxftemlI0sWmxmc=

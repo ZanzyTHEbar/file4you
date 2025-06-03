@@ -16,9 +16,8 @@ import (
 	"file4you/internal/genkithandler/errors"
 	"file4you/internal/genkithandler/providers"
 
-	"github.com/firebase/genkit/go/ai"
-	"github.com/firebase/genkit/go/core"
 	"github.com/firebase/genkit/go/genkit"
+	"github.com/firebase/genkit/go/plugins/googlegenai"
 )
 
 // Service holds an initialized Genkit instance and provides methods
@@ -75,29 +74,14 @@ func NewService(ctx context.Context, dfs *deskfs.DesktopFS, cdb *db.CentralDBPro
 	// Configure Plugins
 	// Google AI Plugin
 	if appCfg.Genkit.Plugins.GoogleAI.APIKey != "" {
-		// TODO: googleAICfg := googleai.Config{ // Uncomment when googleai package is available
-		// APIKey:       appCfg.Genkit.Plugins.GoogleAI.APIKey,
-		// DefaultModel: appCfg.Genkit.Plugins.GoogleAI.DefaultModel,
-		// }
-		// Timeout would typically be part of the client used by the plugin,
-		// or a specific option if the plugin supports it directly.
-		// googleAIOpt, err := googleai.InitWithOptions(ctx, googleAICfg) // Hypothetical InitWithOptions
-		// For Genkit, plugins are often just initialized and they register themselves or provide an option.
-		// Let's assume Init registers the plugin and returns an error if it fails.
-		// Or, it might return a genkit.Plugin which can be passed as an option.
-		// The exact mechanism depends on the Genkit SDK design.
-		// Example:
-		// if err := googleai.Init(ctx, googleAICfg); err != nil {
-		// slog.Error("Failed to initialize Google AI plugin for Genkit", "error", err)
-		// }
-		// TODO: Another pattern:
-		// plugin, err := googleai.NewPlugin(ctx, googleAICfg)
-		// if err != nil {
-		// slog.Error("Failed to initialize Google AI plugin", "error", err)
-		// } else {
-		// genkitOpts = append(genkitOpts, genkit.WithPlugin(plugin)) // Hypothetical option
-		// }
-		slog.Info("Google AI Plugin configured (illustrative)", "apiKeySet", appCfg.Genkit.Plugins.GoogleAI.APIKey != "", "model", appCfg.Genkit.Plugins.GoogleAI.DefaultModel)
+		googleAIPlugin := &googlegenai.GoogleAI{
+			APIKey: appCfg.Genkit.Plugins.GoogleAI.APIKey,
+		}
+		genkitOpts = append(genkitOpts, genkit.WithPlugins(googleAIPlugin))
+		
+		slog.Info("Google AI Plugin configured", 
+			"apiKeySet", appCfg.Genkit.Plugins.GoogleAI.APIKey != "", 
+			"model", appCfg.Genkit.Plugins.GoogleAI.DefaultModel)
 	}
 
 	// OpenAI Plugin
@@ -151,96 +135,6 @@ func NewService(ctx context.Context, dfs *deskfs.DesktopFS, cdb *db.CentralDBPro
 	}
 
 	return s, nil
-}
-
-func (s *Service) registerExampleFlows(ctx context.Context) error {
-	examplePromptFlowFn := func(ctx context.Context, input string) (string, error) {
-		prefixPrompt, found := s.GetPrompt("example_prefix")
-		fullPromptText := input
-		if found {
-			fullPromptText = prefixPrompt.Content + input
-			slog.Debug("Example flow: Used prompt 'example_prefix'", "input", input, "fullPrompt", fullPromptText)
-		} else {
-			slog.Warn("Example flow: Prompt 'example_prefix' not found, using raw input for prompt.", "input", input)
-		}
-
-		// Illustrative call to genkit.Generate.
-		// Assumes a model named "defaultModel" will be configured by one of the plugins.
-		// The actual model name (e.g., "googleAI/gemini-1.5-pro-latest") should be used once plugins are configured.
-		// Or, a default model can be set for the genkit instance.
-		slog.Info("Example flow: Attempting to call genkit.Generate", "model", "defaultModel", "prompt", fullPromptText)
-
-		// In a real scenario, ensure "defaultModel" or a specific model alias is correctly configured.
-		// For now, this call will likely fail if no model named "defaultModel" is registered.
-		// This is for illustrative purposes to show the structure.
-
-		// 1. Look up the model by name.
-		// The actual model name (e.g., "gemini-1.5-pro-latest") and provider (e.g., "googleai")
-		// should be used once plugins are configured.
-		// The error indicates LookupModel wants (g *Genkit, providerName string, modelName string).
-		model := genkit.LookupModel(s.g, "defaultProvider", "defaultModel") // Using placeholder "defaultProvider"
-		if model == nil {
-			slog.Error("Example flow: Model 'defaultModel' from 'defaultProvider' not found. Ensure it's configured and plugins are initialized.")
-			return "", errors.New("model 'defaultModel' (provider 'defaultProvider') not found in examplePromptFlow")
-		}
-
-		// 2. Construct the ModelRequest.
-		// The error indicates model.Generate wants (ctx, *ai.ModelRequest, ai.ModelStreamCallback).
-		// We'll create a simple request with the prompt.
-		// A common way is to use messages. ai.NewUserMessage creates a *ai.Message.
-		// ai.WithPrompt is a PromptingOption, not directly a ModelRequest.
-		// We need to build an *ai.ModelRequest.
-		// One way is to set the Messages field.
-		// ai.NewUserMessage expects *ai.Part arguments.
-		request := &ai.ModelRequest{
-			Messages: []*ai.Message{ai.NewUserMessage(ai.NewTextPart(fullPromptText))},
-			// Other request options like Temperature, MaxOutputTokens, etc., could be set here
-			// or via options if ModelRequest supports them.
-			// For now, a simple message-based request.
-		}
-		// Alternatively, if ai.WithPrompt can be applied to a request:
-		// request := &ai.ModelRequest{}
-		// err := ai.WithPrompt(fullPromptText).ApplyModelRequest(request) // This is speculative
-		// if err != nil {
-		//     slog.Error("Example flow: Failed to apply prompt to ModelRequest", "error", err)
-		//     return "", errors.Wrapf(err, "failed to create ModelRequest")
-		// }
-
-		// 3. Call Generate on the model instance with the request.
-		// Pass nil for ModelStreamCallback for non-streaming.
-		resp, err := model.Generate(ctx, request, nil)
-		if err != nil {
-			slog.Error("Example flow: model.Generate failed (this is expected if 'defaultModel' is not properly configured/initialized)", "error", err)
-			return "", errors.Wrapf(err, "model.Generate failed in examplePromptFlow")
-		}
-
-		if resp == nil {
-			slog.Error("Example flow: model.Generate returned a nil response")
-			return "", errors.New("model.Generate returned nil response in examplePromptFlow")
-		}
-
-		// 4. Extract text from the response.
-		// Assuming *ai.ModelResponse has a Text() method that returns a single string.
-		// This was based on the previous error "assignment mismatch: 2 variables but resp.Text returns 1 value".
-		responseText := resp.Text() // This assumes resp.Text() exists and returns string
-
-		if responseText == "" {
-			slog.Warn("Example flow: model.Generate returned an empty text response")
-		}
-
-		slog.Debug("Example flow: model.Generate successful", "response", responseText)
-		return responseText, nil
-	}
-
-	_, err := DefineFlow(s.g, "examplePromptFlow", core.Func[string, string](examplePromptFlowFn))
-	if err != nil {
-		return errors.Wrapf(err, "failed to define 'examplePromptFlow'")
-	}
-	slog.Info("Successfully defined 'examplePromptFlow'")
-
-	// Add more flow definitions here...
-
-	return nil
 }
 
 // OrganizeFiles uses AI to analyze and suggest organization for the given files

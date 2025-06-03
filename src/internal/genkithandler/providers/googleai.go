@@ -26,7 +26,6 @@ type RetryConfig struct {
 type GoogleAIProvider struct {
 	config      config.GenkitPlugin
 	initialized bool
-	plugin      *googlegenai.GoogleAI
 	retryConfig RetryConfig
 }
 
@@ -42,13 +41,12 @@ func NewGoogleAIProvider(cfg config.GenkitPlugin) *GoogleAIProvider {
 	return &GoogleAIProvider{
 		config:      cfg,
 		retryConfig: retryConfig,
-		plugin: &googlegenai.GoogleAI{
-			APIKey: cfg.APIKey,
-		},
 	}
 }
 
 // Initialize sets up the Google AI provider with Genkit
+// Note: The GoogleAI plugin should actually be registered during Genkit initialization
+// This method is kept for compatibility with the existing provider interface
 func (p *GoogleAIProvider) Initialize(ctx context.Context, g *genkit.Genkit) error {
 	if p.initialized {
 		return nil
@@ -58,14 +56,8 @@ func (p *GoogleAIProvider) Initialize(ctx context.Context, g *genkit.Genkit) err
 		return errors.New("Google AI API key is required")
 	}
 
-	// Initialize the plugin with Genkit
-	err := p.plugin.Init(ctx, g)
-	if err != nil {
-		return fmt.Errorf("failed to initialize Google AI plugin: %w", err)
-	}
-
-	// Log the initialization
-	slog.Info("Initializing Google AI provider",
+	// Log the initialization - the actual plugin initialization happens in the main Genkit setup
+	slog.Info("Google AI provider ready",
 		"model", p.GetModel(),
 		"has_api_key", p.config.APIKey != "")
 
@@ -172,7 +164,7 @@ func (p *GoogleAIProvider) withRetry(ctx context.Context, fn func() (string, err
 		}
 	}
 
-	return "", fmt.Errorf("Google AI request failed after %d attempts: %w", p.retryConfig.MaxRetries+1, lastErr)
+	return "", fmt.Errorf("google AI request failed after %d attempts: %w", p.retryConfig.MaxRetries+1, lastErr)
 }
 
 // withRetryStructured implements retry logic for structured generation
@@ -213,7 +205,7 @@ func (p *GoogleAIProvider) withRetryStructured(ctx context.Context, fn func() (*
 		}
 	}
 
-	return nil, fmt.Errorf("Google AI structured request failed after %d attempts: %w", p.retryConfig.MaxRetries+1, lastErr)
+	return nil, fmt.Errorf("google AI structured request failed after %d attempts: %w", p.retryConfig.MaxRetries+1, lastErr)
 }
 
 // isRetryable determines if an error should trigger a retry
