@@ -1,4 +1,3 @@
-// Package providers defines interfaces and common functionality for AI providers
 package providers
 
 import (
@@ -44,8 +43,8 @@ const (
 	ProviderTypeOpenAI    ProviderType = "openai"
 	ProviderTypeGoogleAI  ProviderType = "googleai"
 	ProviderTypeOllamaAI  ProviderType = "ollama"
-	ProviderTypeAnthropic  ProviderType = "anthropic"
-	ProviderTypeAzureAI    ProviderType = "azureai"
+	ProviderTypeAnthropic ProviderType = "anthropic"
+	ProviderTypeAzureAI   ProviderType = "azureai"
 )
 
 // ProviderConfig contains common configuration for all providers
