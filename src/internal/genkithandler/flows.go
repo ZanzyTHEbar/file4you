@@ -176,7 +176,7 @@ func RegisterCoreFlows(g *genkit.Genkit) error {
 	greetingHandler := func(ctx context.Context, name string) (string, error) {
 		return "Hello, " + name, nil
 	}
-	if _, err := DefineFlow[string, string](g, "greetingFlow", greetingHandler); err != nil {
+	if _, err := DefineFlow(g, "greetingFlow", greetingHandler); err != nil {
 		return fmt.Errorf("failed to register greetingFlow: %w", err)
 	}
 

@@ -106,7 +106,7 @@ return BackupToolOutput{
 	}
 	// DEBUG: Print tool registration
 	fmt.Println("DEBUG: Registering performBackup tool")
-	if _, err := DefineTool[BackupToolInput, BackupToolOutput](g, "performBackup", "Performs a backup of application data.", backupToolHandler); err != nil {
+	if _, err := DefineTool(g, "performBackup", "Performs a backup of application data.", backupToolHandler); err != nil {
 		return err
 	}
 
@@ -116,7 +116,7 @@ return BackupToolOutput{
 			"status": "Directory organization not implemented yet (new system)",
 		}, nil
 	}
-	if _, err := DefineTool[interface{}, map[string]string](g, "organizeDirectory", "Organizes a directory using AI.", organizeHandler); err != nil {
+	if _, err := DefineTool(g, "organizeDirectory", "Organizes a directory using AI.", organizeHandler); err != nil {
 		return err
 	}
 
@@ -126,7 +126,7 @@ return BackupToolOutput{
 			"status": "Workspace management not implemented yet (new system)",
 		}, nil
 	}
-	if _, err := DefineTool[interface{}, map[string]string](g, "manageWorkspace", "Manages and configures workspaces with AI.", workspaceHandler); err != nil {
+	if _, err := DefineTool(g, "manageWorkspace", "Manages and configures workspaces with AI.", workspaceHandler); err != nil {
 		return err
 	}
 	return nil

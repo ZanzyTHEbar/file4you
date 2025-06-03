@@ -1,17 +1,45 @@
 package genkithandler
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
+
+	"file4you/internal/filesystem/trees"
 )
 
 // Prompt represents a loaded prompt template.
 type Prompt struct {
-	Name    string
-	Content string
+	Name     string
+	Content  string
+	Template *template.Template
+}
+
+// PromptContext contains data that can be used in prompt templates
+type PromptContext struct {
+	Files         []FileInfo        `json:"files"`
+	DirectoryPath string            `json:"directory_path"`
+	FileCount     int               `json:"file_count"`
+	FileTypes     map[string]int    `json:"file_types"`
+	TotalSize     int64             `json:"total_size"`
+	Metadata      map[string]string `json:"metadata"`
+	UserContext   string            `json:"user_context,omitempty"`
+}
+
+// FileInfo represents file information for prompt context
+type FileInfo struct {
+	Name      string                 `json:"name"`
+	Path      string                 `json:"path"`
+	Size      int64                  `json:"size"`
+	Extension string                 `json:"extension"`
+	IsDir     bool                   `json:"is_dir"`
+	ModTime   string                 `json:"mod_time"`
+	Checksum  string                 `json:"checksum,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // LoadPrompts loads all .prompt files from the given directory.
@@ -46,12 +74,23 @@ func LoadPrompts(promptsDir string) (map[string]Prompt, error) {
 				continue // Skip this prompt
 			}
 
+			content := string(contentBytes)
+
+			// Create template for dynamic prompt generation
+			tmpl, err := template.New(promptName).Parse(content)
+			if err != nil {
+				slog.Warn("Failed to parse prompt template, using as static content",
+					"name", promptName, "error", err)
+				tmpl = nil
+			}
+
 			prompt := Prompt{
-				Name:    promptName,
-				Content: string(contentBytes),
+				Name:     promptName,
+				Content:  content,
+				Template: tmpl,
 			}
 			loadedPrompts[promptName] = prompt
-			slog.Debug("Loaded prompt", "name", promptName, "path", filePath)
+			slog.Debug("Loaded prompt", "name", promptName, "path", filePath, "has_template", tmpl != nil)
 		}
 	}
 
@@ -65,9 +104,72 @@ func LoadPrompts(promptsDir string) (map[string]Prompt, error) {
 }
 
 // GetPrompt retrieves a loaded prompt by name.
-// This would typically be a method on a struct that holds the loaded prompts.
-// For now, it's a placeholder if we were to pass the map around.
 func GetPrompt(name string, prompts map[string]Prompt) (Prompt, bool) {
 	p, ok := prompts[name]
 	return p, ok
+}
+
+// RenderPrompt renders a prompt template with the given context
+func RenderPrompt(prompt Prompt, context PromptContext) (string, error) {
+	if prompt.Template == nil {
+		// Static prompt, return as-is
+		return prompt.Content, nil
+	}
+
+	var buf bytes.Buffer
+	err := prompt.Template.Execute(&buf, context)
+	if err != nil {
+		return "", fmt.Errorf("failed to render prompt template %s: %w", prompt.Name, err)
+	}
+
+	return buf.String(), nil
+}
+
+// CreateFileOrganizationContext creates a prompt context from file metadata
+func CreateFileOrganizationContext(files []trees.FileMetadata, directoryPath string, userContext string) PromptContext {
+	context := PromptContext{
+		Files:         make([]FileInfo, 0, len(files)),
+		DirectoryPath: directoryPath,
+		FileCount:     len(files),
+		FileTypes:     make(map[string]int),
+		TotalSize:     0,
+		Metadata:      make(map[string]string),
+		UserContext:   userContext,
+	}
+
+	for _, file := range files {
+		// Extract file name from path
+		fileName := filepath.Base(file.FilePath)
+
+		// Extract extension
+		extension := filepath.Ext(fileName)
+		if extension != "" && len(extension) > 1 {
+			extension = extension[1:] // Remove the dot
+		}
+
+		fileInfo := FileInfo{
+			Name:      fileName,
+			Path:      file.FilePath,
+			Size:      file.Size,
+			Extension: extension,
+			IsDir:     file.IsDir,
+			ModTime:   file.ModTime.Format("2006-01-02 15:04:05"),
+			Checksum:  file.Checksum,
+			Metadata:  make(map[string]interface{}),
+		}
+
+		context.Files = append(context.Files, fileInfo)
+		context.TotalSize += file.Size
+
+		// Count file types by extension
+		if !file.IsDir && extension != "" {
+			context.FileTypes[extension]++
+		} else if file.IsDir {
+			context.FileTypes["directory"]++
+		} else {
+			context.FileTypes["unknown"]++
+		}
+	}
+
+	return context
 }

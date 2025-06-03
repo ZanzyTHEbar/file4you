@@ -3,13 +3,18 @@ package genkithandler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"strings"
 
 	"file4you/internal/config"
 	"file4you/internal/db"
 	"file4you/internal/deskfs"
+	"file4you/internal/filesystem/trees"
 	"file4you/internal/genkithandler/errors"
+	"file4you/internal/genkithandler/providers"
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core"
@@ -19,25 +24,29 @@ import (
 // Service holds an initialized Genkit instance and provides methods
 // for interacting with Genkit functionalities.
 type Service struct {
-	g             *genkit.Genkit
-	cfg           config.File4YouGenkitHandlerConfig
-	promptsDir    string
-	loadedPrompts map[string]Prompt
+	g               *genkit.Genkit
+	cfg             config.File4YouGenkitHandlerConfig
+	promptsDir      string
+	loadedPrompts   map[string]Prompt
+	providerManager *providers.Manager
 }
 
 // NewService initializes a new Genkit instance and returns a Service.
 // It uses the globally loaded AppConfig.
 func NewService(ctx context.Context, dfs *deskfs.DesktopFS, cdb *db.CentralDBProvider) (*Service, error) {
-	
+
 	appCfg := config.AppConfig
 
 	// Load prompts
 	prompts, err := LoadPrompts(appCfg.Genkit.Prompts.Directory)
 	if err != nil {
-	
+
 		slog.Error("Failed to load prompts for Genkit handler", "directory", appCfg.Genkit.Prompts.Directory, "error", err)
 		return nil, fmt.Errorf("failed to load prompts: %w", err)
 	}
+
+	// Initialize provider manager
+	providerManager := providers.NewManager()
 
 	// Prepare Genkit options based on configuration
 	var genkitOpts []genkit.GenkitOption
@@ -119,11 +128,18 @@ func NewService(ctx context.Context, dfs *deskfs.DesktopFS, cdb *db.CentralDBPro
 		return nil, fmt.Errorf("failed to initialize Genkit: %w", err)
 	}
 
+	// Initialize AI provider manager
+	if err := providerManager.Initialize(ctx, g, appCfg.Genkit); err != nil {
+		slog.Warn("Failed to initialize AI provider manager", "error", err)
+		// Continue without AI providers for now - allows the service to work without API keys
+	}
+
 	s := &Service{
-		g:             g,
-		cfg:           appCfg.File4You.GenkitHandler,
-		promptsDir:    appCfg.Genkit.Prompts.Directory,
-		loadedPrompts: prompts,
+		g:               g,
+		cfg:             appCfg.File4You.GenkitHandler,
+		promptsDir:      appCfg.Genkit.Prompts.Directory,
+		loadedPrompts:   prompts,
+		providerManager: providerManager,
 	}
 
 	// Register tools before flows so flows can call tools
@@ -227,6 +243,161 @@ func (s *Service) registerExampleFlows(ctx context.Context) error {
 	return nil
 }
 
+// OrganizeFiles uses AI to analyze and suggest organization for the given files
+func (s *Service) OrganizeFiles(ctx context.Context, files []trees.FileMetadata, directoryPath string, userContext string) (*FileOrganizationResult, error) {
+	if s.providerManager == nil {
+		return nil, errors.New("AI provider manager not initialized")
+	}
+
+	// Create prompt context
+	promptContext := CreateFileOrganizationContext(files, directoryPath, userContext)
+
+	// Get organization prompt
+	prompt, found := GetPrompt("file_organization", s.loadedPrompts)
+	if !found {
+		return nil, errors.New("file_organization prompt not found")
+	}
+
+	// Render prompt with context
+	renderedPrompt, err := RenderPrompt(prompt, promptContext)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to render organization prompt")
+	}
+
+	// Generate organization suggestions using AI
+	response, err := s.providerManager.GenerateText(ctx, s.g, renderedPrompt)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to generate organization suggestions")
+	}
+
+	// Parse the AI response (assuming JSON format)
+	result, err := ParseOrganizationResult(response)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to parse AI organization response")
+	}
+
+	slog.Info("AI file organization completed",
+		"files_analyzed", len(files),
+		"suggested_actions", len(result.SuggestedActions),
+		"confidence", result.Confidence)
+
+	return result, nil
+}
+
+// CategorizeFile uses AI to categorize a single file
+func (s *Service) CategorizeFile(ctx context.Context, file trees.FileMetadata, userContext string) (*FileCategorization, error) {
+	if s.providerManager == nil {
+		return nil, errors.New("AI provider manager not initialized")
+	}
+
+	// Create single-file context
+	fileInfo := FileInfo{
+		Name:      filepath.Base(file.FilePath),
+		Path:      file.FilePath,
+		Size:      file.Size,
+		Extension: strings.TrimPrefix(filepath.Ext(file.FilePath), "."),
+		IsDir:     file.IsDir,
+		ModTime:   file.ModTime.Format("2006-01-02 15:04:05"),
+		Checksum:  file.Checksum,
+		Metadata:  make(map[string]interface{}),
+	}
+
+	// Create categorization context
+	context := PromptContext{
+		Files:       []FileInfo{fileInfo},
+		FileCount:   1,
+		UserContext: userContext,
+	}
+
+	// Get categorization prompt
+	prompt, found := GetPrompt("file_categorization", s.loadedPrompts)
+	if !found {
+		return nil, errors.New("file_categorization prompt not found")
+	}
+
+	// Render prompt with context
+	renderedPrompt, err := RenderPrompt(prompt, context)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to render categorization prompt")
+	}
+
+	// Generate categorization using AI
+	response, err := s.providerManager.GenerateText(ctx, s.g, renderedPrompt)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to generate file categorization")
+	}
+
+	// Parse the AI response
+	result, err := ParseCategorizationResult(response)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to parse AI categorization response")
+	}
+
+	slog.Debug("AI file categorization completed",
+		"file", fileInfo.Name,
+		"category", result.Category,
+		"confidence", result.Confidence)
+
+	return result, nil
+}
+
+// DetectDuplicates uses AI to identify potential duplicate files
+func (s *Service) DetectDuplicates(ctx context.Context, files []trees.FileMetadata, directoryPath string, userContext string) (*DuplicateDetectionResult, error) {
+	if s.providerManager == nil {
+		return nil, errors.New("AI provider manager not initialized")
+	}
+
+	// Create prompt context for duplicate detection
+	promptContext := CreateFileOrganizationContext(files, directoryPath, userContext)
+
+	// Get duplicate detection prompt
+	prompt, found := GetPrompt("duplicate_detection", s.loadedPrompts)
+	if !found {
+		return nil, errors.New("duplicate_detection prompt not found")
+	}
+
+	// Render prompt with context
+	renderedPrompt, err := RenderPrompt(prompt, promptContext)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to render duplicate detection prompt")
+	}
+
+	// Generate duplicate analysis using AI
+	response, err := s.providerManager.GenerateText(ctx, s.g, renderedPrompt)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to generate duplicate analysis")
+	}
+
+	// Parse the AI response
+	result, err := ParseDuplicateDetectionResult(response)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to parse AI duplicate detection response")
+	}
+
+	slog.Info("AI duplicate detection completed",
+		"files_analyzed", len(files),
+		"duplicate_groups", len(result.DuplicateGroups),
+		"confidence", result.Confidence)
+
+	return result, nil
+}
+
+// GetProviderStatus returns the status of all AI providers
+func (s *Service) GetProviderStatus() map[providers.ProviderType]bool {
+	if s.providerManager == nil {
+		return make(map[providers.ProviderType]bool)
+	}
+	return s.providerManager.GetProviderStatus()
+}
+
+// SetPrimaryProvider changes the primary AI provider
+func (s *Service) SetPrimaryProvider(providerType providers.ProviderType) error {
+	if s.providerManager == nil {
+		return errors.New("AI provider manager not initialized")
+	}
+	return s.providerManager.SetPrimaryProvider(providerType)
+}
+
 // Genkit returns the underlying Genkit instance.
 // This can be used for advanced scenarios where direct access to Genkit is needed.
 func (s *Service) Genkit() *genkit.Genkit {
@@ -249,4 +420,36 @@ func (s *Service) Close(ctx context.Context) error {
 	// TODO: Add cleanup logic if necessary, e.g., for plugins or resources
 	// that require explicit shutdown.
 	return nil
+}
+
+// AI Response Parsing Functions
+
+// ParseOrganizationResult parses the AI response for file organization
+func ParseOrganizationResult(response string) (*FileOrganizationResult, error) {
+	var result FileOrganizationResult
+	err := json.Unmarshal([]byte(response), &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse organization result: %w", err)
+	}
+	return &result, nil
+}
+
+// ParseCategorizationResult parses the AI response for file categorization
+func ParseCategorizationResult(response string) (*FileCategorization, error) {
+	var result FileCategorization
+	err := json.Unmarshal([]byte(response), &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse categorization result: %w", err)
+	}
+	return &result, nil
+}
+
+// ParseDuplicateDetectionResult parses the AI response for duplicate detection
+func ParseDuplicateDetectionResult(response string) (*DuplicateDetectionResult, error) {
+	var result DuplicateDetectionResult
+	err := json.Unmarshal([]byte(response), &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse duplicate detection result: %w", err)
+	}
+	return &result, nil
 }
