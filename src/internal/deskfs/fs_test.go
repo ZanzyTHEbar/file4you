@@ -190,7 +190,7 @@ func TestEnhancedOrganize(t *testing.T) {
 	// It's important that 'dir' (which is a temp dir) is cleaned up.
 	// The 'cleanup' func from setupTestDir handles this.
 	defer cleanup()
-	
+
 	// Initialize the DirectoryTree for the test
 	sourceDir := filepath.Join(dir, "source")
 	mockDBProvider.SetDirectoryTree(trees.NewDirectoryTree(trees.WithRoot(sourceDir)))
@@ -219,20 +219,20 @@ func TestEnhancedOrganize(t *testing.T) {
 
 	// In dry run mode, the files won't actually be moved, so we only check that the
 	// function completed without errors. In a real test, we would check the actual files.
-	
+
 	// Create the expected directory structure for validation
 	expectedDirs := []string{
 		filepath.Join(dir, "target/docs/Reports"),
 		filepath.Join(dir, "target/pics/Photos"),
 		filepath.Join(dir, "target/scripts/Setup"),
 	}
-	
+
 	// Create the directories so we can validate the correct structure was determined
 	for _, path := range expectedDirs {
 		err := os.MkdirAll(path, 0755)
 		assert.NoError(t, err, fmt.Sprintf("Failed to create directory %s for test validation", path))
 	}
-	
+
 	// Since we're in dry run mode, we won't have actual files, so we validate the directory structure
 	for _, path := range expectedDirs {
 		fmt.Printf("Checking directory exists: %s\n", path)
@@ -291,20 +291,40 @@ func pathExists(path string) bool {
 
 type mockInteractor struct{}
 
-func (m *mockInteractor) Info(message string)                                  { slog.Info(message) }
-func (m *mockInteractor) Infof(format string, args ...interface{})             { slog.Info(fmt.Sprintf(format, args...)) }
-func (m *mockInteractor) Success(message string)                               { slog.Info("SUCCESS: " + message) }
-func (m *mockInteractor) Successf(format string, args ...interface{})          { slog.Info("SUCCESS: " + fmt.Sprintf(format, args...)) }
-func (m *mockInteractor) Warning(message string)                               { slog.Warn(message) }
-func (m *mockInteractor) Warningf(format string, args ...interface{})          { slog.Warn(fmt.Sprintf(format, args...)) }
-func (m *mockInteractor) Error(message string, err error)                      { slog.Error(message, "error", err) }
-func (m *mockInteractor) Errorf(format string, err error, args ...interface{}) { slog.Error(fmt.Sprintf(format, args...), "error", err) }
-func (m *mockInteractor) Fatal(message string, err error)                      { slog.Error("FATAL: "+message, "error", err); os.Exit(1) }
-func (m *mockInteractor) Fatalf(format string, err error, args ...interface{}) { slog.Error("FATAL: "+fmt.Sprintf(format, args...), "error", err); os.Exit(1) }
-func (m *mockInteractor) Output(message string)                                { fmt.Println(message) }
-func (m *mockInteractor) Outputf(format string, args ...interface{})           { fmt.Printf(format+"\n", args...) }
-func (m *mockInteractor) Confirm(prompt string, defaultValue bool) (bool, error) { return defaultValue, nil }
-func (m *mockInteractor) Prompt(prompt string, defaultValue string) (string, error) { return defaultValue, nil }
+func (m *mockInteractor) Info(message string) { slog.Info(message) }
+func (m *mockInteractor) Infof(format string, args ...interface{}) {
+	slog.Info(fmt.Sprintf(format, args...))
+}
+func (m *mockInteractor) Success(message string) { slog.Info("SUCCESS: " + message) }
+func (m *mockInteractor) Successf(format string, args ...interface{}) {
+	slog.Info("SUCCESS: " + fmt.Sprintf(format, args...))
+}
+func (m *mockInteractor) Warning(message string) { slog.Warn(message) }
+func (m *mockInteractor) Warningf(format string, args ...interface{}) {
+	slog.Warn(fmt.Sprintf(format, args...))
+}
+func (m *mockInteractor) Error(message string, err error) { slog.Error(message, "error", err) }
+func (m *mockInteractor) Errorf(format string, err error, args ...interface{}) {
+	slog.Error(fmt.Sprintf(format, args...), "error", err)
+}
+func (m *mockInteractor) Fatal(message string, err error) {
+	slog.Error("FATAL: "+message, "error", err)
+	os.Exit(1)
+}
+func (m *mockInteractor) Fatalf(format string, err error, args ...interface{}) {
+	slog.Error("FATAL: "+fmt.Sprintf(format, args...), "error", err)
+	os.Exit(1)
+}
+func (m *mockInteractor) Output(message string) { fmt.Println(message) }
+func (m *mockInteractor) Outputf(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
+}
+func (m *mockInteractor) Confirm(prompt string, defaultValue bool) (bool, error) {
+	return defaultValue, nil
+}
+func (m *mockInteractor) Prompt(prompt string, defaultValue string) (string, error) {
+	return defaultValue, nil
+}
 func (m *mockInteractor) Select(prompt string, options []string, defaultValue string) (string, error) {
 	if len(options) == 0 {
 		return defaultValue, fmt.Errorf("no options provided for select")

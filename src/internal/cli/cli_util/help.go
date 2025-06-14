@@ -16,7 +16,7 @@ func NewHelp(params *cli.CmdParams) *cobra.Command {
 	helpCmd := &cobra.Command{
 		Use:     "detailed_help",
 		Aliases: []string{"h"},
-		Short:   "Display help for file4you", // Updated name
+		Short:   "Display help for file4you",                                 // Updated name
 		Long:    `Display help for file4you. Shows custom help information.`, // Updated name
 		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
 			// Call the new ShowCustomHelp method on the Interactor.

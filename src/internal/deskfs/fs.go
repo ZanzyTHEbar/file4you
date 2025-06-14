@@ -65,7 +65,7 @@ type DesktopFS struct {
 	HomeDCDir        string
 	WorkspaceManager *WorkspaceManager
 	InstanceConfig   *config.File4YouConfig // Changed to use new config type
-	term             ui.Interactor // Changed to ui.Interactor
+	term             ui.Interactor          // Changed to ui.Interactor
 	gitMutex         sync.Mutex
 }
 
@@ -87,13 +87,13 @@ func NewDesktopFS(interactor ui.Interactor, centralDB db.ICentralDBProvider) *De
 	cwd, err := os.Getwd()
 	if err != nil {
 		interactor.Error("Error getting current working directory", err) // Use interactor
-		os.Exit(1) // or return nil / error
+		os.Exit(1)                                                       // or return nil / error
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
 		interactor.Error("Couldn't find home directory", err) // Use interactor
-		os.Exit(1) // or return nil / error
+		os.Exit(1)                                            // or return nil / error
 	}
 
 	// Use AppConfig for cache directory
@@ -109,15 +109,15 @@ func NewDesktopFS(interactor ui.Interactor, centralDB db.ICentralDBProvider) *De
 
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		interactor.Error(fmt.Sprintf("Error creating cache directory %s", cacheDir), err) // Use interactor
-		os.Exit(1) // or return nil / error
+		os.Exit(1)                                                                        // or return nil / error
 	}
 
 	assertHAndler := assert.NewAssertHandler()
 
 	return &DesktopFS{
-		HomeDir:          home,
-		Cwd:              cwd,
-		CacheDir:         cacheDir,
+		HomeDir:  home,
+		Cwd:      cwd,
+		CacheDir: cacheDir,
 		// HomeDCDir will be determined by config or other logic if still needed
 		WorkspaceManager: NewWorkspaceManager(centralDB, assertHAndler),
 		InstanceConfig:   &config.AppConfig.File4You, // Use loaded global config
@@ -192,7 +192,7 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *config.File4YouConfig, params *FileP
 	if _, err := os.Stat(params.SourceDir); os.IsNotExist(err) {
 		return fmt.Errorf("source directory does not exist: %s", params.SourceDir)
 	}
-	
+
 	if _, err := os.Stat(params.TargetDir); os.IsNotExist(err) {
 		return fmt.Errorf("target directory does not exist: %s", params.TargetDir)
 	}
@@ -205,14 +205,14 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *config.File4YouConfig, params *FileP
 	var wg sync.WaitGroup
 	var once sync.Once
 	dirTree := dfs.WorkspaceManager.centralDB.GetDirectoryTree()
-	
+
 	// Check if the DirectoryTree or its Root is nil, and initialize if needed
-	if (dirTree == nil || dirTree.Root == nil) {
+	if dirTree == nil || dirTree.Root == nil {
 		// Initialize the DirectoryTree with the source directory if it doesn't exist or has no root
 		dirTree = trees.NewDirectoryTree(trees.WithRoot(params.SourceDir))
 		dfs.WorkspaceManager.centralDB.SetDirectoryTree(dirTree)
 	}
-	
+
 	var errChSize int
 	if dirTree.Root != nil && dirTree.Root.Files != nil {
 		errChSize = len(dirTree.Root.Files)
@@ -237,7 +237,7 @@ func (dfs *DesktopFS) EnhancedOrganize(cfg *config.File4YouConfig, params *FileP
 		case <-ctx.Done():
 			return
 		}
-	}()	// Traverse and organize files based on config
+	}() // Traverse and organize files based on config
 	if dirTree != nil && dirTree.Root != nil {
 		dfs.traverseAndOrganize(ctx, cancel, dirTree.Root, cfg, params, &wg, errCh)
 	} else {
@@ -475,7 +475,7 @@ func (dfs *DesktopFS) buildTreeAndCache(rootPath string, recursive bool, maxDept
 	// Add deferred cleanup
 	defer func() {
 		dirTree := dfs.WorkspaceManager.centralDB.GetDirectoryTree()
-		if (dirTree != nil) {
+		if dirTree != nil {
 			dirTree.Cleanup()
 		}
 	}()
@@ -741,11 +741,11 @@ func (dfs *DesktopFS) Backup() (string, error) {
 	// Create a backup directory with timestamp
 	timestamp := time.Now().Format("20060102_150405")
 	backupDir := filepath.Join(dfs.HomeDCDir, "backups", fmt.Sprintf("deskfs_backup_%s", timestamp))
-	
+
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		return "", fmt.Errorf("could not create backup directory: %v", err)
 	}
-	
+
 	// Backup the workspace configurations
 	if dfs.WorkspaceManager != nil && dfs.WorkspaceManager.centralDB != nil {
 		// Backup workspace configurations
@@ -764,7 +764,7 @@ func (dfs *DesktopFS) Backup() (string, error) {
 			}
 		}
 	}
-	
+
 	// Backup key file paths and metadata
 	infoFile := filepath.Join(backupDir, "deskfs_info.txt")
 	info := fmt.Sprintf("DesktopFS Backup\nTimestamp: %s\n"+
@@ -773,11 +773,11 @@ func (dfs *DesktopFS) Backup() (string, error) {
 		"Cache Directory: %s\n"+
 		"Home DC Directory: %s\n",
 		timestamp, dfs.HomeDir, dfs.Cwd, dfs.CacheDir, dfs.HomeDCDir)
-	
+
 	if err := os.WriteFile(infoFile, []byte(info), 0644); err != nil {
 		slog.Error("Failed to write backup info file", "error", err)
 	}
-	
+
 	slog.Info("DesktopFS backup completed", "path", backupDir)
 	return backupDir, nil
 }

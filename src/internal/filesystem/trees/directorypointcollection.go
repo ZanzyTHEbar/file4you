@@ -25,4 +25,3 @@ func (d DirectoryPointCollection) Pivot(dim kdtree.Dim) int {
 	plane := DirectoryPointPlane{Dim: dim, Points: d}
 	return kdtree.Partition(plane, kdtree.MedianOfMedians(plane))
 }
-

@@ -63,8 +63,8 @@ Targets can be:
 
 			// Simulate work
 			// time.Sleep(3 * time.Second) // Example placeholder for actual work
-			clearSuccessful := true // Placeholder
-			var clearErr error = nil   // Placeholder
+			clearSuccessful := true  // Placeholder
+			var clearErr error = nil // Placeholder
 
 			if clearErr != nil {
 				params.Interactor.StopSpinner(false, "Clear operation failed.")

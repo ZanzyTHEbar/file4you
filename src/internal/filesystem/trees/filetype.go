@@ -8,9 +8,9 @@ import (
 
 // FileTypeNode represents a folder and associated file types
 type FileTypeNode struct {
-	Name       string         `json:"name"`        // Add JSON tags for serialization
-	Extensions []string       `json:"extensions"`
-	Parent     *FileTypeNode  `json:"-"`          // Prevent circular reference in JSON
+	Name       string          `json:"name"` // Add JSON tags for serialization
+	Extensions []string        `json:"extensions"`
+	Parent     *FileTypeNode   `json:"-"` // Prevent circular reference in JSON
 	Children   []*FileTypeNode `json:"children"`
 }
 
@@ -139,7 +139,7 @@ func (filetype *FileTypeNode) AddExtensions(extensions []string) error {
 	for _, ext := range filetype.Extensions {
 		extensionMap[ext] = true
 	}
-	
+
 	for _, ext := range extensions {
 		if ext == "" {
 			return fmt.Errorf("empty extension not allowed")

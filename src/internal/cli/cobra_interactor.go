@@ -14,7 +14,7 @@ import (
 
 // CobraInteractor implements the ui.Interactor interface for Cobra CLI interactions.
 type CobraInteractor struct {
-	term         *terminal.Terminal // Changed to pointer
+	term          *terminal.Terminal // Changed to pointer
 	activeSpinner *spinner.Spinner
 	// Add other necessary fields, e.g., for styling
 }

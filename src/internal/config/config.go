@@ -91,7 +91,6 @@ func LoadConfig(configPath string) (*Config, error) {
 	viper.SetDefault("file4you.database.type", internal.DefaultDatabaseType)
 	viper.SetDefault("file4you.organizeTimeoutMinutes", 10)
 
-
 	viper.AutomaticEnv()                                   // Read in environment variables that match
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // Replace dots with underscores in env var names e.g. genkit.plugins.googleAI.apiKey becomes GENKIT_PLUGINS_GOOGLEAI_APIKEY
 

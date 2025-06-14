@@ -69,7 +69,7 @@ Targets can be:
 			}
 
 			flowInput := genkithandler.BackupToolInput{}
-			// if target == "database" { flowInput.BackupTarget = "centraldb_only" } // Example for future extension
+			// TODO: if target == "database" { flowInput.BackupTarget = "centraldb_only" } // Example for future extension
 
 			backupOutput, err := genkithandler.ExecuteFlow[genkithandler.BackupToolInput, genkithandler.BackupToolOutput](
 				context.Background(),
@@ -103,6 +103,6 @@ Targets can be:
 			return nil
 		},
 	}
-	// Add flags if needed, e.g., --output-directory, --compression-level
+	// TODO: Add flags if needed, e.g., --output-directory, --compression-level
 	return cmd
 }
