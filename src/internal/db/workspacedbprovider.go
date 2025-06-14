@@ -2,6 +2,8 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
+	"file4you/internal/filesystem/trees"
 	"fmt"
 	"path/filepath"
 
@@ -92,54 +94,132 @@ func LoadWorkspaceDBProvider(central *CentralDBProvider, workspaceID uuid.UUID) 
 	return NewWorkspaceDB(rootPath)
 }
 
-/* // Example function: AddFileMetadata adds file metadata in a workspace-specific database.
-func (w *WorkspaceDB) AddFileMetadata(path string, metadata Metadata) error {
-	metadataBlob, err := serializeMetadata(metadata)
-	if err != nil {
-		return err
+// BatchInsertFiles efficiently inserts multiple file metadata records in a single transaction
+func (w *WorkspaceDB) BatchInsertFiles(files []trees.FileMetadata) error {
+	if len(files) == 0 {
+		return nil
 	}
-	_, err = w.db.Exec("INSERT INTO files (path, metadata) VALUES (?, ?)", path, metadataBlob)
-	return err
+
+	tx, err := w.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO files (id, workspace_id, path, metadata) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for i, file := range files {
+		metadataJSON, err := json.Marshal(file)
+		if err != nil {
+			return fmt.Errorf("failed to marshal metadata for file %s: %w", file.FilePath, err)
+		}
+
+		fileID := uuid.New().String()
+		_, err = stmt.Exec(fileID, "", file.FilePath, metadataJSON)
+		if err != nil {
+			return fmt.Errorf("failed to insert file %s (batch item %d): %w", file.FilePath, i, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
-// UpdateFileMetadata updates the metadata for a given file in the workspace
-func (w *WorkspaceDB) UpdateFileMetadata(workspaceID int, path string, metadata Metadata) error {
-	metadataJSON, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata into JSON: %w", err)
+// BatchUpdateFiles efficiently updates multiple file metadata records
+func (w *WorkspaceDB) BatchUpdateFiles(updates map[string]trees.FileMetadata) error {
+	if len(updates) == 0 {
+		return nil
 	}
 
-	_, err = w.db.Exec("UPDATE file_metadata SET metadata_json = ? WHERE workspace_id = ? AND path = ?", string(metadataJSON), workspaceID, path)
+	tx, err := w.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to update file metadata: %w", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("UPDATE files SET metadata = ? WHERE path = ?")
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for path, metadata := range updates {
+		metadataJSON, err := json.Marshal(metadata)
+		if err != nil {
+			return fmt.Errorf("failed to marshal metadata for file %s: %w", path, err)
+		}
+
+		_, err = stmt.Exec(metadataJSON, path)
+		if err != nil {
+			return fmt.Errorf("failed to update file %s: %w", path, err)
+		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
-// TODO: Read Turso libs on this - StoreVector stores a vector embedding for a specific file
-func (w *WorkspaceDB) StoreVector(fileID int, vector []float64) error {
-	vectorBlob, err := json.Marshal(vector)
-	if err != nil {
-		return fmt.Errorf("failed to marshal vector into blob: %w", err)
+// BatchDeleteFiles efficiently removes multiple file records by their paths
+func (w *WorkspaceDB) BatchDeleteFiles(paths []string) error {
+	if len(paths) == 0 {
+		return nil
 	}
 
-	_, err = w.db.Exec("INSERT INTO file_vectors (file_id, vector) VALUES (?, ?)", fileID, vectorBlob)
+	tx, err := w.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to insert file vector: %w", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("DELETE FROM files WHERE path = ?")
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for i, path := range paths {
+		_, err = stmt.Exec(path)
+		if err != nil {
+			return fmt.Errorf("failed to delete file %s (batch item %d): %w", path, i, err)
+		}
 	}
 
-	return nil
+	return tx.Commit()
 }
 
-// Function to add a historical event to the workspace database.
-func (w *WorkspaceDB) AddHistoryEvent(eventType string, eventJSON string) error {
-	_, err := w.db.Exec("INSERT INTO history (event_type, event_json) VALUES (?, ?)", eventType, eventJSON)
-	return err
-} */
+// BatchInsertHistory efficiently inserts multiple history events
+func (w *WorkspaceDB) BatchInsertHistory(events []HistoryEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
 
-/* // serializeMetadata serializes metadata for storage.
-func serializeMetadata(metadata Metadata) ([]byte, error) {
-	// Implement actual serialization logic here
-	return []byte{}, nil
-} */
+	tx, err := w.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO history (id, event_type, event_json) VALUES (?, ?, ?)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for i, event := range events {
+		eventID := uuid.New().String()
+		_, err = stmt.Exec(eventID, event.EventType, event.EventJSON)
+		if err != nil {
+			return fmt.Errorf("failed to insert history event %d: %w", i, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// HistoryEvent represents a historical event in the workspace
+type HistoryEvent struct {
+	EventType string
+	EventJSON string
+}

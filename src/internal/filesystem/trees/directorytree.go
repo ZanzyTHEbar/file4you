@@ -418,11 +418,20 @@ func (dt *DirectoryTree) RemoveNode(path string) bool {
 
 	// Remove from path index
 	removed := false
+
+	// Remove from path index
 	if dt.pathIndex != nil {
 		removed = dt.pathIndex.Remove(path)
 	}
 
-	// TODO: Add removal from other indexes when implemented
+	// Remove from multi-index system
+	if dt.multiIndex != nil {
+		dt.multiIndex.Remove(path)
+	}
+
+	// Remove from KD-tree (handled by rebalancing during next insert)
+	// Note: KD-tree removal is deferred to avoid expensive rebalancing operations
+	// The incremental manager will handle this during the next rebalancing cycle
 
 	return removed
 }

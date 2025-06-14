@@ -537,3 +537,79 @@ func (c *CentralDBProvider) DeleteWorkspacesBatch(workspaceIDs []string) error {
 
 	return batch.Commit()
 }
+
+// BatchInsertSnapshots efficiently inserts multiple snapshots in a single transaction
+func (c *CentralDBProvider) BatchInsertSnapshots(snapshots []Snapshot) error {
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	batch, err := c.NewBatchContext(50) // Batch size of 50 for optimal performance
+	if err != nil {
+		return fmt.Errorf("failed to create batch context: %w", err)
+	}
+	defer batch.Rollback()
+
+	query := "INSERT INTO snapshots (id, taken_at, directory_state) VALUES (?, ?, ?)"
+
+	for _, snapshot := range snapshots {
+		batch.AddOperation(query, "insert", snapshot.ID, snapshot.TakenAt, snapshot.DirectoryState)
+
+		if err := batch.Flush(); err != nil {
+			return fmt.Errorf("batch flush failed for snapshot %v: %w", snapshot.ID, err)
+		}
+	}
+
+	return batch.Commit()
+}
+
+// BatchUpdateSnapshots efficiently updates multiple snapshots with their new data
+func (c *CentralDBProvider) BatchUpdateSnapshots(updates map[uuid.UUID]map[string]interface{}) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	batch, err := c.NewBatchContext(50)
+	if err != nil {
+		return fmt.Errorf("failed to create batch context: %w", err)
+	}
+	defer batch.Rollback()
+
+	for snapshotID, fields := range updates {
+		for field, value := range fields {
+			query := fmt.Sprintf("UPDATE snapshots SET %s = ? WHERE id = ?", field)
+			batch.AddOperation(query, "update", value, snapshotID)
+
+			if err := batch.Flush(); err != nil {
+				return fmt.Errorf("batch flush failed for snapshot %v: %w", snapshotID, err)
+			}
+		}
+	}
+
+	return batch.Commit()
+}
+
+// BatchDeleteSnapshots efficiently removes multiple snapshots by their IDs
+func (c *CentralDBProvider) BatchDeleteSnapshots(snapshotIDs []uuid.UUID) error {
+	if len(snapshotIDs) == 0 {
+		return nil
+	}
+
+	batch, err := c.NewBatchContext(50)
+	if err != nil {
+		return fmt.Errorf("failed to create batch context: %w", err)
+	}
+	defer batch.Rollback()
+
+	query := "DELETE FROM snapshots WHERE id = ?"
+
+	for _, id := range snapshotIDs {
+		batch.AddOperation(query, "delete", id)
+
+		if err := batch.Flush(); err != nil {
+			return fmt.Errorf("batch flush failed for snapshot %v: %w", id, err)
+		}
+	}
+
+	return batch.Commit()
+}

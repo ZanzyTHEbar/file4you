@@ -3,7 +3,7 @@ package deskfs
 import (
 	"context"
 	"errors"
-	"file4you/internal/config" // Import the new config package
+	"file4you/internal/config"
 	"file4you/internal/db"
 	"file4you/internal/filesystem/trees"
 
@@ -64,8 +64,8 @@ type DesktopFS struct {
 	CacheDir         string
 	HomeDCDir        string
 	WorkspaceManager *WorkspaceManager
-	InstanceConfig   *config.File4YouConfig // Changed to use new config type
-	term             ui.Interactor          // Changed to ui.Interactor
+	InstanceConfig   *config.File4YouConfig
+	term             ui.Interactor
 	gitMutex         sync.Mutex
 }
 
@@ -82,18 +82,18 @@ func NewFilePathParams() *FilePathParams {
 	}
 }
 
-func NewDesktopFS(interactor ui.Interactor, centralDB db.ICentralDBProvider) *DesktopFS { // Changed term to interactor and its type
+func NewDesktopFS(interactor ui.Interactor, centralDB db.ICentralDBProvider) *DesktopFS {
 	var err error
 	cwd, err := os.Getwd()
 	if err != nil {
-		interactor.Error("Error getting current working directory", err) // Use interactor
-		os.Exit(1)                                                       // or return nil / error
+		interactor.Error("Error getting current working directory", err)
+		os.Exit(1)
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		interactor.Error("Couldn't find home directory", err) // Use interactor
-		os.Exit(1)                                            // or return nil / error
+		interactor.Error("Couldn't find home directory", err)
+		os.Exit(1)
 	}
 
 	// Use AppConfig for cache directory
@@ -108,18 +108,18 @@ func NewDesktopFS(interactor ui.Interactor, centralDB db.ICentralDBProvider) *De
 	}
 
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		interactor.Error(fmt.Sprintf("Error creating cache directory %s", cacheDir), err) // Use interactor
-		os.Exit(1)                                                                        // or return nil / error
+		interactor.Error(fmt.Sprintf("Error creating cache directory %s", cacheDir), err)
+		os.Exit(1)
 	}
 
-	assertHAndler := assert.NewAssertHandler()
+	assertHHandler := assert.NewAssertHandler()
 
 	return &DesktopFS{
 		HomeDir:  home,
 		Cwd:      cwd,
 		CacheDir: cacheDir,
 		// HomeDCDir will be determined by config or other logic if still needed
-		WorkspaceManager: NewWorkspaceManager(centralDB, assertHAndler),
+		WorkspaceManager: NewWorkspaceManager(centralDB, assertHHandler),
 		InstanceConfig:   &config.AppConfig.File4You, // Use loaded global config
 		term:             interactor,                 // Assign interactor
 	}
