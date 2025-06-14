@@ -7,7 +7,6 @@ import (
 	"file4you/internal/db"
 	"file4you/internal/filesystem/trees"
 
-	// "file4you/internal/terminal" // No longer used
 	"file4you/internal/ui"
 	"fmt"
 	"io"
@@ -25,62 +24,6 @@ import (
 	ignore "github.com/sabhiram/go-gitignore"
 )
 
-type ConflictResolutionType string
-
-const (
-	Overwrite    ConflictResolutionType = "overwrite"
-	Skip         ConflictResolutionType = "skip"
-	RenameSuffix ConflictResolutionType = "rename"
-)
-
-type FilePathParams struct {
-	RemoveAfter        bool
-	Recursive          bool
-	MaxDepth           int
-	GitEnabled         bool
-	CopyFiles          bool
-	SourceDir          string
-	TargetDir          string
-	DryRun             bool
-	ConflictResolution ConflictResolutionType // "overwrite", "skip", or "rename"
-}
-
-// Validate checks if the FilePathParams are valid
-func (p *FilePathParams) Validate() error {
-	if p.SourceDir == "" || p.TargetDir == "" {
-		return fmt.Errorf("source and target directories must be specified")
-	}
-	if p.MaxDepth < 0 {
-		return fmt.Errorf("max depth cannot be negative")
-	}
-	return nil
-}
-
-// DesktopFS is the main filesystem manager for the file4you application.
-// It provides functionality for organizing and managing files across workspaces.
-type DesktopFS struct {
-	HomeDir          string
-	Cwd              string
-	CacheDir         string
-	HomeDCDir        string
-	WorkspaceManager *WorkspaceManager
-	InstanceConfig   *config.File4YouConfig
-	term             ui.Interactor
-	gitMutex         sync.Mutex
-}
-
-// NewFilePathParams initializes FilePathParams with sensible defaults.
-func NewFilePathParams() *FilePathParams {
-	return &FilePathParams{
-		SourceDir:          "",
-		TargetDir:          "",
-		Recursive:          true,
-		CopyFiles:          false,
-		RemoveAfter:        false,
-		DryRun:             false,
-		ConflictResolution: "rename",
-	}
-}
 
 func NewDesktopFS(interactor ui.Interactor, centralDB db.ICentralDBProvider) *DesktopFS {
 	var err error
@@ -118,10 +61,9 @@ func NewDesktopFS(interactor ui.Interactor, centralDB db.ICentralDBProvider) *De
 		HomeDir:  home,
 		Cwd:      cwd,
 		CacheDir: cacheDir,
-		// HomeDCDir will be determined by config or other logic if still needed
 		WorkspaceManager: NewWorkspaceManager(centralDB, assertHHandler),
-		InstanceConfig:   &config.AppConfig.File4You, // Use loaded global config
-		term:             interactor,                 // Assign interactor
+		InstanceConfig:   &config.AppConfig.File4You,
+		term:             interactor,
 	}
 }
 
