@@ -167,17 +167,25 @@ func (cm *CategoryMap) Insert(node *DirectoryNode) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
+	// Track extensions and categories for this directory to avoid duplicates
+	extensionsFound := make(map[string]bool)
+	categoriesFound := make(map[string]bool)
+
 	// Index by file extensions in this directory
 	for _, file := range node.Files {
 		if file.Extension != "" {
 			ext := strings.ToLower(file.Extension)
-			cm.extensions[ext] = append(cm.extensions[ext], node)
+			if !extensionsFound[ext] {
+				cm.extensions[ext] = append(cm.extensions[ext], node)
+				extensionsFound[ext] = true
+			}
 		}
 
 		// Index by file categories
 		category := cm.categorizeFile(file)
-		if category != "" {
+		if category != "" && !categoriesFound[category] {
 			cm.categories[category] = append(cm.categories[category], node)
+			categoriesFound[category] = true
 		}
 	}
 }
@@ -334,6 +342,7 @@ func (mi *MultiIndex) QueryByPath(path string) (*DirectoryNode, bool) {
 	defer func() {
 		mi.stats.mu.Lock()
 		mi.stats.PathQueries++
+		mi.stats.TotalOperations++
 		mi.stats.mu.Unlock()
 	}()
 
@@ -353,6 +362,7 @@ func (mi *MultiIndex) QueryByPathPrefix(prefix string) []*DirectoryNode {
 	defer func() {
 		mi.stats.mu.Lock()
 		mi.stats.PathQueries++
+		mi.stats.TotalOperations++
 		mi.stats.mu.Unlock()
 	}()
 
@@ -372,6 +382,7 @@ func (mi *MultiIndex) QueryBySizeRange(minSize, maxSize int64) []*DirectoryNode 
 	defer func() {
 		mi.stats.mu.Lock()
 		mi.stats.SizeQueries++
+		mi.stats.TotalOperations++
 		mi.stats.mu.Unlock()
 	}()
 
@@ -402,6 +413,7 @@ func (mi *MultiIndex) QueryByTimeRange(start, end time.Time) []*DirectoryNode {
 	defer func() {
 		mi.stats.mu.Lock()
 		mi.stats.TimeQueries++
+		mi.stats.TotalOperations++
 		mi.stats.mu.Unlock()
 	}()
 
@@ -422,6 +434,7 @@ func (mi *MultiIndex) QueryByExtension(extension string) []*DirectoryNode {
 	defer func() {
 		mi.stats.mu.Lock()
 		mi.stats.ExtensionQueries++
+		mi.stats.TotalOperations++
 		mi.stats.mu.Unlock()
 	}()
 
@@ -441,6 +454,7 @@ func (mi *MultiIndex) QueryByCategory(category string) []*DirectoryNode {
 	defer func() {
 		mi.stats.mu.Lock()
 		mi.stats.ExtensionQueries++
+		mi.stats.TotalOperations++
 		mi.stats.mu.Unlock()
 	}()
 
@@ -460,6 +474,7 @@ func (mi *MultiIndex) QuerySpatialNearest(query DirectoryPoint, k int) ([]*Direc
 	defer func() {
 		mi.stats.mu.Lock()
 		mi.stats.SpatialQueries++
+		mi.stats.TotalOperations++
 		mi.stats.mu.Unlock()
 	}()
 

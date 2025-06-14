@@ -170,8 +170,8 @@ func (tree *DirectoryTree) InsertNodeToKDTreeIncremental(node *DirectoryNode) {
 	if tree.kdManager.ShouldBatchInsert() {
 		tree.BuildKDTreeIncremental()
 	}
-	
-	slog.Debug("Directory node queued for incremental KD-Tree insertion", 
+
+	slog.Debug("Directory node queued for incremental KD-Tree insertion",
 		"path", node.Path,
 		"pending_count", len(tree.kdManager.pendingInsertions))
 }

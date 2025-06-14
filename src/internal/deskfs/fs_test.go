@@ -23,12 +23,18 @@ import (
 // Specific test configurations if needed would have to be managed by setting AppConfig fields
 // before calling functions that use it, or by passing a modified config struct directly.
 func loadTestConfig(configPath string, interactor ui.Interactor) *config.File4YouConfig {
+	// Reset the global config first to ensure test isolation
+	config.AppConfig = config.Config{}
+
 	// Ensure global config is loaded if not already (e.g. by a main test setup)
 	if _, err := config.LoadConfig(configPath); err != nil {
 		slog.Error("loadTestConfig: Failed to load global config", "error", err)
-		// Return a pointer to a default/empty File4YouConfig or handle error as appropriate for tests
-		// For simplicity, returning the current AppConfig.File4You which might be zero/default
-		return &config.AppConfig.File4You
+		// Return a default config for failed loads
+		return &config.File4YouConfig{
+			TargetDir:              ".",
+			CacheDir:               "/tmp/file4you-cache",
+			OrganizeTimeoutMinutes: 10,
+		}
 	}
 	return &config.AppConfig.File4You
 }

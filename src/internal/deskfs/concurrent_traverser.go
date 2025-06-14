@@ -10,32 +10,22 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"golang.org/x/sync/errgroup"
+	"github.com/sourcegraph/conc"
+	"github.com/sourcegraph/conc/pool"
 )
 
 // ConcurrentTraverser implements high-performance concurrent directory traversal
-// using worker pools and bounded goroutines for optimal resource utilization
+// using the conc package for robust worker pool and job management
 type ConcurrentTraverser struct {
 	maxWorkers    int
-	jobQueue      chan DirectoryJob
-	resultQueue   chan TraversalResult
 	ctx           context.Context
 	cancel        context.CancelFunc
-	wg            sync.WaitGroup
 	mu            sync.RWMutex
 	processedDirs map[string]bool // Track processed directories to avoid duplicates
-}
-
-// DirectoryJob represents a single directory traversal task
-type DirectoryJob struct {
-	Path      string
-	Depth     int
-	Parent    *trees.DirectoryNode
-	MaxDepth  int
-	Recursive bool
-	Node      *trees.DirectoryNode
+	pool          *pool.ContextPool
 }
 
 // TraversalResult contains the result of processing a directory
@@ -54,11 +44,10 @@ type TraversalStats struct {
 	ErrorsFound    int64
 	StartTime      int64
 	EndTime        int64
-	mu             sync.RWMutex
 }
 
 // NewConcurrentTraverser creates a new concurrent directory traverser
-// with optimal worker count based on available CPU cores
+// with optimal worker count based on available CPU cores using conc.Pool
 func NewConcurrentTraverser(ctx context.Context) *ConcurrentTraverser {
 	// Optimal worker count: CPU cores * 2 for I/O bound operations
 	maxWorkers := runtime.NumCPU() * 2
@@ -73,140 +62,80 @@ func NewConcurrentTraverser(ctx context.Context) *ConcurrentTraverser {
 
 	return &ConcurrentTraverser{
 		maxWorkers:    maxWorkers,
-		jobQueue:      make(chan DirectoryJob, maxWorkers*4), // Buffer for smooth operation
-		resultQueue:   make(chan TraversalResult, maxWorkers*4),
 		ctx:           ctxWithCancel,
 		cancel:        cancel,
 		processedDirs: make(map[string]bool),
+		pool:          pool.New().WithMaxGoroutines(maxWorkers).WithContext(ctxWithCancel),
 	}
 }
 
-// TraverseDirectory performs concurrent directory traversal with optimal performance
+// TraverseDirectory performs concurrent directory traversal using conc.Pool
+// for optimal performance and resource management
 func (ct *ConcurrentTraverser) TraverseDirectory(rootPath string, recursive bool, maxDepth int, dfs *DesktopFS) (*trees.DirectoryNode, error) {
 	// Initialize root node
 	rootNode := trees.NewDirectoryNode(rootPath, nil)
 
-	// Track performance metrics
+	// Track performance metrics with atomic operations
 	stats := &TraversalStats{
 		StartTime: getCurrentTime(),
 	}
 
-	// Start error group for coordinated worker management
-	g, ctx := errgroup.WithContext(ct.ctx)
+	// Use conc.WaitGroup for better error handling and coordination
+	wg := conc.NewWaitGroup()
 
-	// Start worker pool
-	for i := 0; i < ct.maxWorkers; i++ {
-		workerID := i
-		g.Go(func() error {
-			return ct.worker(ctx, workerID, dfs, stats)
-		})
+	// Process directories level by level using a BFS approach with conc.Pool
+	currentLevel := []*trees.DirectoryNode{rootNode}
+
+	for depth := 0; depth <= maxDepth && len(currentLevel) > 0; depth++ {
+		if !recursive && depth > 0 {
+			break
+		}
+
+		nextLevel := make([]*trees.DirectoryNode, 0)
+		var nextLevelMu sync.Mutex
+
+		// Process all directories at the current level concurrently
+		for _, dirNode := range currentLevel {
+			dirNode := dirNode // Capture loop variable
+			wg.Go(func() {
+				result := ct.processDirectoryNode(ct.ctx, dirNode, depth, maxDepth, dfs)
+
+				// Update statistics atomically
+				if result.Error == nil {
+					atomic.AddInt64(&stats.DirsProcessed, 1)
+					atomic.AddInt64(&stats.FilesProcessed, int64(len(result.Files)))
+				} else {
+					atomic.AddInt64(&stats.ErrorsFound, 1)
+					slog.Error(fmt.Sprintf("Error processing directory %s: %v", result.Path, result.Error))
+				}
+
+				// Add child directories to next level if within depth limits
+				if recursive && depth < maxDepth && result.Error == nil {
+					nextLevelMu.Lock()
+					nextLevel = append(nextLevel, result.Children...)
+					nextLevelMu.Unlock()
+				}
+			})
+		}
+
+		// Wait for all directories at this level to complete
+		wg.Wait()
+
+		// Move to the next level
+		currentLevel = nextLevel
 	}
-
-	// Start result collector
-	var collectorErr error
-	g.Go(func() error {
-		collectorErr = ct.resultCollector(ctx, stats)
-		return collectorErr
-	})
-
-	// Submit initial job
-	initialJob := DirectoryJob{
-		Path:      rootPath,
-		Depth:     0,
-		Parent:    nil,
-		MaxDepth:  maxDepth,
-		Recursive: recursive,
-		Node:      rootNode,
-	}
-
-	select {
-	case ct.jobQueue <- initialJob:
-		// Job submitted successfully
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-
-	// Signal completion and wait for all workers
-	close(ct.jobQueue)
-
-	if err := g.Wait(); err != nil && collectorErr == nil {
-		return nil, fmt.Errorf("traversal failed: %w", err)
-	}
-
-	close(ct.resultQueue)
 
 	stats.EndTime = getCurrentTime()
 	ct.logPerformanceStats(stats)
 
-	return rootNode, collectorErr
+	return rootNode, nil
 }
 
-// worker processes directory jobs concurrently with proper error handling
-func (ct *ConcurrentTraverser) worker(ctx context.Context, workerID int, dfs *DesktopFS, stats *TraversalStats) error {
-	slog.Debug(fmt.Sprintf("Worker %d started", workerID))
-	defer slog.Debug(fmt.Sprintf("Worker %d stopped", workerID))
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case job, ok := <-ct.jobQueue:
-			if !ok {
-				return nil // Channel closed, worker should exit
-			}
-
-			result := ct.processDirectory(ctx, job, dfs)
-
-			// Update statistics
-			if result.Error == nil {
-				stats.mu.Lock()
-				stats.DirsProcessed++
-				stats.FilesProcessed += int64(len(result.Files))
-				stats.mu.Unlock()
-			} else {
-				stats.mu.Lock()
-				stats.ErrorsFound++
-				stats.mu.Unlock()
-			}
-
-			select {
-			case ct.resultQueue <- result:
-				// Result sent successfully
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-
-			// Submit child directory jobs if recursive
-			if job.Recursive && result.Error == nil {
-				for _, childNode := range result.Children {
-					if job.Depth < job.MaxDepth {
-						childJob := DirectoryJob{
-							Path:      childNode.Path,
-							Depth:     job.Depth + 1,
-							Parent:    job.Node,
-							MaxDepth:  job.MaxDepth,
-							Recursive: job.Recursive,
-							Node:      childNode,
-						}
-
-						select {
-						case ct.jobQueue <- childJob:
-							// Child job submitted
-						case <-ctx.Done():
-							return ctx.Err()
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-// processDirectory processes a single directory with optimized I/O operations
-func (ct *ConcurrentTraverser) processDirectory(ctx context.Context, job DirectoryJob, dfs *DesktopFS) TraversalResult {
+// processDirectoryNode processes a single directory node with optimized I/O operations
+func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode *trees.DirectoryNode, depth, maxDepth int, dfs *DesktopFS) TraversalResult {
 	result := TraversalResult{
-		Node: job.Node,
-		Path: job.Path,
+		Node: dirNode,
+		Path: dirNode.Path,
 	}
 
 	// Check for cancellation
@@ -218,14 +147,14 @@ func (ct *ConcurrentTraverser) processDirectory(ctx context.Context, job Directo
 	}
 
 	// Check depth limits
-	if job.Depth > job.MaxDepth {
-		slog.Debug(fmt.Sprintf("Max depth %d reached at %s", job.MaxDepth, job.Path))
+	if depth > maxDepth {
+		slog.Debug(fmt.Sprintf("Max depth %d reached at %s", maxDepth, dirNode.Path))
 		return result
 	}
 
 	// Check if already processed (prevent duplicates)
 	ct.mu.RLock()
-	if ct.processedDirs[job.Path] {
+	if ct.processedDirs[dirNode.Path] {
 		ct.mu.RUnlock()
 		return result
 	}
@@ -233,20 +162,20 @@ func (ct *ConcurrentTraverser) processDirectory(ctx context.Context, job Directo
 
 	// Mark as processed
 	ct.mu.Lock()
-	ct.processedDirs[job.Path] = true
+	ct.processedDirs[dirNode.Path] = true
 	ct.mu.Unlock()
 
 	// Read directory entries with optimized I/O
-	entries, err := os.ReadDir(job.Path)
+	entries, err := os.ReadDir(dirNode.Path)
 	if err != nil {
-		result.Error = fmt.Errorf("failed to read directory %s: %w", job.Path, err)
+		result.Error = fmt.Errorf("failed to read directory %s: %w", dirNode.Path, err)
 		return result
 	}
 
 	// Get ignore patterns
-	ignored, err := dfs.GetDesktopCleanerIgnore(job.Path)
+	ignored, err := dfs.GetDesktopCleanerIgnore(dirNode.Path)
 	if err != nil {
-		slog.Warn(fmt.Sprintf("Failed to get ignore patterns for %s: %v", job.Path, err))
+		slog.Warn(fmt.Sprintf("Failed to get ignore patterns for %s: %v", dirNode.Path, err))
 	}
 
 	// Process entries with optimized allocation
@@ -254,7 +183,7 @@ func (ct *ConcurrentTraverser) processDirectory(ctx context.Context, job Directo
 	files := make([]*trees.FileNode, 0, len(entries))
 
 	for _, entry := range entries {
-		childPath := filepath.Join(job.Path, entry.Name())
+		childPath := filepath.Join(dirNode.Path, entry.Name())
 
 		// Skip ignored files and directories
 		if ignored != nil && ignored.MatchesPath(childPath) {
@@ -263,9 +192,9 @@ func (ct *ConcurrentTraverser) processDirectory(ctx context.Context, job Directo
 		}
 
 		if entry.IsDir() {
-			childDir := trees.NewDirectoryNode(childPath, job.Node)
+			childDir := trees.NewDirectoryNode(childPath, dirNode)
 			children = append(children, childDir)
-			job.Node.Children = append(job.Node.Children, childDir)
+			dirNode.Children = append(dirNode.Children, childDir)
 		} else {
 			entryInfo, err := entry.Info()
 			if err != nil {
@@ -280,7 +209,7 @@ func (ct *ConcurrentTraverser) processDirectory(ctx context.Context, job Directo
 				Metadata:  trees.NewMetadata(entryInfo),
 			}
 			files = append(files, childFile)
-			job.Node.AddFile(childFile)
+			dirNode.AddFile(childFile)
 		}
 	}
 
@@ -289,33 +218,84 @@ func (ct *ConcurrentTraverser) processDirectory(ctx context.Context, job Directo
 	return result
 }
 
-// resultCollector aggregates results from workers
-func (ct *ConcurrentTraverser) resultCollector(ctx context.Context, stats *TraversalStats) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case result, ok := <-ct.resultQueue:
-			if !ok {
-				return nil // Channel closed
-			}
+// TraverseDirectoryWithPool performs concurrent directory traversal using conc.Pool directly
+// This is an alternative implementation that leverages the pool for fine-grained control
+func (ct *ConcurrentTraverser) TraverseDirectoryWithPool(rootPath string, recursive bool, maxDepth int, dfs *DesktopFS) (*trees.DirectoryNode, error) {
+	// Initialize root node
+	rootNode := trees.NewDirectoryNode(rootPath, nil)
 
-			if result.Error != nil {
-				slog.Error(fmt.Sprintf("Error processing directory %s: %v", result.Path, result.Error))
-				// Continue processing other directories despite errors
-			}
+	// Track performance metrics with atomic operations
+	stats := &TraversalStats{
+		StartTime: getCurrentTime(),
+	}
+
+	// Create a work queue for directories to process
+	type dirWork struct {
+		node     *trees.DirectoryNode
+		depth    int
+		maxDepth int
+	}
+
+	workQueue := make(chan dirWork, ct.maxWorkers*4)
+	var pendingWork int64 = 1 // Start with root directory
+
+	// Add initial work
+	workQueue <- dirWork{node: rootNode, depth: 0, maxDepth: maxDepth}
+
+	// Process work using the pool
+	for atomic.LoadInt64(&pendingWork) > 0 {
+		select {
+		case <-ct.ctx.Done():
+			return nil, ct.ctx.Err()
+		case work := <-workQueue:
+			atomic.AddInt64(&pendingWork, -1)
+
+			ct.pool.Go(func(ctx context.Context) error {
+				result := ct.processDirectoryNode(ctx, work.node, work.depth, work.maxDepth, dfs)
+
+				// Update statistics atomically
+				if result.Error == nil {
+					atomic.AddInt64(&stats.DirsProcessed, 1)
+					atomic.AddInt64(&stats.FilesProcessed, int64(len(result.Files)))
+
+					// Add child directories to work queue if recursive and within depth
+					if recursive && work.depth < work.maxDepth {
+						for _, child := range result.Children {
+							atomic.AddInt64(&pendingWork, 1)
+							select {
+							case workQueue <- dirWork{node: child, depth: work.depth + 1, maxDepth: work.maxDepth}:
+								// Work submitted successfully
+							case <-ctx.Done():
+								atomic.AddInt64(&pendingWork, -1)
+								return ctx.Err()
+							}
+						}
+					}
+				} else {
+					atomic.AddInt64(&stats.ErrorsFound, 1)
+					slog.Error(fmt.Sprintf("Error processing directory %s: %v", result.Path, result.Error))
+				}
+
+				return nil
+			})
 		}
 	}
+
+	// Wait for all work to complete
+	ct.pool.Wait()
+
+	stats.EndTime = getCurrentTime()
+	ct.logPerformanceStats(stats)
+
+	return rootNode, nil
 }
 
 // logPerformanceStats logs traversal performance metrics
 func (ct *ConcurrentTraverser) logPerformanceStats(stats *TraversalStats) {
-	stats.mu.RLock()
 	duration := stats.EndTime - stats.StartTime
-	dirsProcessed := stats.DirsProcessed
-	filesProcessed := stats.FilesProcessed
-	errors := stats.ErrorsFound
-	stats.mu.RUnlock()
+	dirsProcessed := atomic.LoadInt64(&stats.DirsProcessed)
+	filesProcessed := atomic.LoadInt64(&stats.FilesProcessed)
+	errors := atomic.LoadInt64(&stats.ErrorsFound)
 
 	if duration > 0 {
 		dirsPerSec := float64(dirsProcessed) / float64(duration) * 1000 // Convert to per second
@@ -330,6 +310,9 @@ func (ct *ConcurrentTraverser) logPerformanceStats(stats *TraversalStats) {
 func (ct *ConcurrentTraverser) Cleanup() {
 	if ct.cancel != nil {
 		ct.cancel()
+	}
+	if ct.pool != nil {
+		ct.pool.Wait() // Ensure all goroutines complete
 	}
 }
 
