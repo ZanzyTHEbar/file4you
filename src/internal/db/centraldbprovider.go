@@ -349,3 +349,191 @@ func (c *CentralDBProvider) InsertSnapshot(snapshot *Snapshot) (uuid.UUID, error
 
 	return snapshot.ID, nil
 }
+
+// Batch operations for high-performance database updates
+
+// BatchOperation represents a single database operation
+type BatchOperation struct {
+	Query string
+	Args  []interface{}
+	Type  string // "insert", "update", "delete"
+}
+
+// BatchContext holds state for batch processing
+type BatchContext struct {
+	operations []BatchOperation
+	tx         *sql.Tx
+	batchSize  int
+	committed  int
+}
+
+// NewBatchContext creates a new batch processing context
+func (c *CentralDBProvider) NewBatchContext(batchSize int) (*BatchContext, error) {
+	if batchSize <= 0 {
+		batchSize = 100 // Default batch size
+	}
+
+	tx, err := c.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	return &BatchContext{
+		operations: make([]BatchOperation, 0, batchSize),
+		tx:         tx,
+		batchSize:  batchSize,
+	}, nil
+}
+
+// AddOperation adds an operation to the batch
+func (bc *BatchContext) AddOperation(query string, opType string, args ...interface{}) {
+	bc.operations = append(bc.operations, BatchOperation{
+		Query: query,
+		Args:  args,
+		Type:  opType,
+	})
+}
+
+// ExecuteBatch executes all operations in the current batch
+func (bc *BatchContext) ExecuteBatch() error {
+	if len(bc.operations) == 0 {
+		return nil
+	}
+
+	start := time.Now()
+
+	for _, op := range bc.operations {
+		_, err := bc.tx.Exec(op.Query, op.Args...)
+		if err != nil {
+			slog.Error("Batch operation failed", "type", op.Type, "error", err)
+			return fmt.Errorf("batch operation failed: %w", err)
+		}
+	}
+
+	bc.committed += len(bc.operations)
+	bc.operations = bc.operations[:0] // Clear the slice but keep capacity
+
+	duration := time.Since(start)
+	slog.Debug("Batch executed",
+		"operations_count", bc.committed,
+		"duration", duration,
+		"ops_per_sec", float64(bc.committed)/duration.Seconds())
+
+	return nil
+}
+
+// ShouldFlush returns true if the batch should be executed
+func (bc *BatchContext) ShouldFlush() bool {
+	return len(bc.operations) >= bc.batchSize
+}
+
+// Flush executes the batch if it should be flushed
+func (bc *BatchContext) Flush() error {
+	if bc.ShouldFlush() {
+		return bc.ExecuteBatch()
+	}
+	return nil
+}
+
+// Commit finalizes all operations and commits the transaction
+func (bc *BatchContext) Commit() error {
+	// Execute any remaining operations
+	if err := bc.ExecuteBatch(); err != nil {
+		bc.Rollback()
+		return err
+	}
+
+	if err := bc.tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	slog.Info("Batch operations committed", "total_operations", bc.committed)
+	return nil
+}
+
+// Rollback cancels all operations and rolls back the transaction
+func (bc *BatchContext) Rollback() error {
+	return bc.tx.Rollback()
+}
+
+// High-level batch workspace operations
+
+// AddWorkspacesBatch adds multiple workspaces efficiently using batch operations
+func (c *CentralDBProvider) AddWorkspacesBatch(workspaces []Workspace) error {
+	if len(workspaces) == 0 {
+		return nil
+	}
+
+	batch, err := c.NewBatchContext(50) // Batch size of 50
+	if err != nil {
+		return fmt.Errorf("failed to create batch context: %w", err)
+	}
+	defer batch.Rollback() // Ensure cleanup on error
+
+	query := "INSERT INTO workspaces (id, root_path, config, time_stamp) VALUES (?, ?, ?, ?)"
+
+	for _, workspace := range workspaces {
+		batch.AddOperation(query, "insert",
+			workspace.ID.String(),
+			workspace.RootPath,
+			workspace.Config,
+			workspace.Timestamp)
+
+		if err := batch.Flush(); err != nil {
+			return fmt.Errorf("batch flush failed: %w", err)
+		}
+	}
+
+	return batch.Commit()
+}
+
+// UpdateWorkspacesBatch updates multiple workspaces efficiently
+func (c *CentralDBProvider) UpdateWorkspacesBatch(updates map[string]map[string]interface{}) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	batch, err := c.NewBatchContext(50)
+	if err != nil {
+		return fmt.Errorf("failed to create batch context: %w", err)
+	}
+	defer batch.Rollback()
+
+	for workspaceID, fields := range updates {
+		for field, value := range fields {
+			query := fmt.Sprintf("UPDATE workspaces SET %s = ?, time_stamp = CURRENT_TIMESTAMP WHERE id = ?", field)
+			batch.AddOperation(query, "update", value, workspaceID)
+
+			if err := batch.Flush(); err != nil {
+				return fmt.Errorf("batch flush failed: %w", err)
+			}
+		}
+	}
+
+	return batch.Commit()
+}
+
+// DeleteWorkspacesBatch removes multiple workspaces efficiently
+func (c *CentralDBProvider) DeleteWorkspacesBatch(workspaceIDs []string) error {
+	if len(workspaceIDs) == 0 {
+		return nil
+	}
+
+	batch, err := c.NewBatchContext(50)
+	if err != nil {
+		return fmt.Errorf("failed to create batch context: %w", err)
+	}
+	defer batch.Rollback()
+
+	query := "DELETE FROM workspaces WHERE id = ?"
+
+	for _, id := range workspaceIDs {
+		batch.AddOperation(query, "delete", id)
+
+		if err := batch.Flush(); err != nil {
+			return fmt.Errorf("batch flush failed: %w", err)
+		}
+	}
+
+	return batch.Commit()
+}

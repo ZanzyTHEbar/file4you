@@ -470,7 +470,7 @@ func (dfs *DesktopFS) MoveToTrash(node *trees.DirectoryNode) error {
 	return os.Rename(node.Path, dst)
 }
 
-// buildTreeAndCache recursively builds a directory tree and populates a cache
+// buildTreeAndCache builds a directory tree using concurrent traversal for optimal performance
 func (dfs *DesktopFS) buildTreeAndCache(rootPath string, recursive bool, maxDepth int) error {
 	// Add deferred cleanup
 	defer func() {
@@ -486,12 +486,24 @@ func (dfs *DesktopFS) buildTreeAndCache(rootPath string, recursive bool, maxDept
 		dfs.WorkspaceManager.centralDB.SetDirectoryTree(newDirectoryTree)
 	}
 
-	//if dfs.WorkspaceManager.centralDB.DirectoryTree.Cache == nil {
-	//	dfs.WorkspaceManager.centralDB.DirectoryTree.Cache = make(map[string]*trees.DirectoryNode)
-	//}
+	// Use concurrent traverser for high-performance directory scanning
+	ctx := context.Background()
+	traverser := NewConcurrentTraverser(ctx)
+	defer traverser.Cleanup()
 
+	slog.Info(fmt.Sprintf("Starting concurrent traversal of %s (recursive: %v, maxDepth: %d)", rootPath, recursive, maxDepth))
+
+	rootNode, err := traverser.TraverseDirectory(rootPath, recursive, maxDepth, dfs)
+	if err != nil {
+		return fmt.Errorf("concurrent traversal failed: %w", err)
+	}
+
+	// Update the directory tree with the traversed root
 	dirTree := dfs.WorkspaceManager.centralDB.GetDirectoryTree()
-	return dfs.buildTreeNodes(dirTree.Root, recursive, maxDepth, 0)
+	dirTree.Root = rootNode
+
+	slog.Info("Concurrent traversal completed successfully")
+	return nil
 }
 
 // Recursive helper to populate the directory tree with DirectoryNode entries

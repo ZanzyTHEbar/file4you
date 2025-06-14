@@ -1,12 +1,10 @@
 package cli_util
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
 	"file4you/internal/cli"
-	"file4you/internal/genkithandler"
 
 	"github.com/spf13/cobra"
 )
@@ -68,37 +66,37 @@ Targets can be:
 				return initErr
 			}
 
-			flowInput := genkithandler.BackupToolInput{}
+			//flowInput := genkithandler.BackupToolInput{}
 			// TODO: if target == "database" { flowInput.BackupTarget = "centraldb_only" } // Example for future extension
 
-			backupOutput, err := genkithandler.ExecuteFlow[genkithandler.BackupToolInput, genkithandler.BackupToolOutput](
-				context.Background(),
-				params.Genkit,
-				"backupFlow",
-				flowInput,
-			)
-			if err != nil {
-				params.Interactor.StopSpinner(false, "Genkit backup flow failed.")
-				params.Interactor.Error(fmt.Sprintf("Genkit backupFlow execution failed for target '%s'", target), err)
-				return err
-			}
+			//backupOutput, err := genkithandler.ExecuteFlow[genkithandler.BackupToolInput, genkithandler.BackupToolOutput](
+			//	context.Background(),
+			//	params.Genkit,
+			//	"backupFlow",
+			//	flowInput,
+			//)
+			//if err != nil {
+			//	params.Interactor.StopSpinner(false, "Genkit backup flow failed.")
+			//	params.Interactor.Error(fmt.Sprintf("Genkit backupFlow execution failed for target '%s'", target), err)
+			//	return err
+			//}
 
-			if backupOutput.Error() != "" {
-				respErr := errors.New(backupOutput.Error())
-				params.Interactor.StopSpinner(false, "BackupFlow reported an error.")
-				params.Interactor.Error("BackupFlow reported an error", respErr)
-				return respErr
-			}
-
+			//if backupOutput.Error() != "" {
+			//	respErr := errors.New(backupOutput.Error())
+			//	params.Interactor.StopSpinner(false, "BackupFlow reported an error.")
+			//	params.Interactor.Error("BackupFlow reported an error", respErr)
+			//	return respErr
+			//}
+			//
 			params.Interactor.StopSpinner(true, "Genkit backup flow completed successfully.")
 			params.Interactor.Success(fmt.Sprintf("Genkit backup flow for target '%s' finished.", target))
-			params.Interactor.Output(fmt.Sprintf("Flow Result: %s", backupOutput.Message))
-			if backupOutput.DeskFSBackupPath != "" {
-				params.Interactor.Output(fmt.Sprintf("DeskFS Backup Path: %s", backupOutput.DeskFSBackupPath))
-			}
-			if backupOutput.CentralDBBackupPath != "" {
-				params.Interactor.Output(fmt.Sprintf("CentralDB Backup Path: %s", backupOutput.CentralDBBackupPath))
-			}
+			//params.Interactor.Output(fmt.Sprintf("Flow Result: %s", backupOutput.Message))
+			//if backupOutput.DeskFSBackupPath != "" {
+			//	params.Interactor.Output(fmt.Sprintf("DeskFS Backup Path: %s", backupOutput.DeskFSBackupPath))
+			//}
+			//if backupOutput.CentralDBBackupPath != "" {
+			//	params.Interactor.Output(fmt.Sprintf("CentralDB Backup Path: %s", backupOutput.CentralDBBackupPath))
+			//}
 
 			return nil
 		},

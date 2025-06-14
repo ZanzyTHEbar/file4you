@@ -15,8 +15,11 @@ import (
 
 type DirectoryTree struct {
 	Root       *DirectoryNode
-	KDTree     *kdtree.Tree             // KD-Tree structure for fast metadata-based searches
-	KDTreeData DirectoryPointCollection // Holds DirectoryPoint references
+	KDTree     *kdtree.Tree              // KD-Tree structure for fast metadata-based searches
+	KDTreeData DirectoryPointCollection  // Holds DirectoryPoint references
+	kdManager  *IncrementalKDTreeManager // Manages incremental updates to avoid O(N log N) rebuilds
+	multiIndex *MultiIndex               // Multi-index system for optimized queries
+	pathIndex  *PatriciaPathIndex        // Fast path lookups
 	metrics    *TreeMetrics
 	logger     *slog.Logger
 	closeOnce  sync.Once
@@ -38,10 +41,16 @@ func NewDirectoryTree(opts ...TreeOption) *DirectoryTree {
 			OperationCounts: make(map[string]int64),
 			LastUpdated:     time.Now(),
 		},
-		logger: slog.Default(),
+		logger:     slog.Default(),
+		kdManager:  NewIncrementalKDTreeManager(),
+		multiIndex: NewMultiIndex(),
+		pathIndex:  NewPatriciaPathIndex(),
 		//Cache: make(map[string]*DirectoryNode),
 		Root: NewDirectoryNode("/", nil),
 	}
+
+	// Link the spatial index
+	dt.multiIndex.SetSpatialIndex(dt)
 
 	for _, opt := range opts {
 		opt(dt)
@@ -273,4 +282,221 @@ func (tree *DirectoryTree) MarshalJSON() ([]byte, error) {
 
 func (tree *DirectoryTree) UnMarshalJSON(data []byte) error {
 	return tree.Root.UnMarshalJSON(data)
+}
+
+// Multi-Index Query Methods
+
+// FindByPath performs O(k) path lookup using patricia tree
+func (dt *DirectoryTree) FindByPath(path string) (*DirectoryNode, bool) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if dt.pathIndex != nil {
+		return dt.pathIndex.Lookup(path)
+	}
+
+	// Fallback to traditional search
+	return dt.findNodeByPath(dt.Root, path), dt.findNodeByPath(dt.Root, path) != nil
+}
+
+// FindByPathPrefix finds all nodes with paths starting with the given prefix
+func (dt *DirectoryTree) FindByPathPrefix(prefix string) []*DirectoryNode {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if dt.pathIndex != nil {
+		return dt.pathIndex.PrefixLookup(prefix)
+	}
+
+	// Fallback to traditional search
+	var results []*DirectoryNode
+	dt.walkAndCollect(dt.Root, func(node *DirectoryNode) bool {
+		return strings.HasPrefix(node.Path, prefix)
+	}, &results)
+	return results
+}
+
+// FindBySizeRange finds directories within a size range
+func (dt *DirectoryTree) FindBySizeRange(minSize, maxSize int64) []*DirectoryNode {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if dt.multiIndex != nil {
+		return dt.multiIndex.QueryBySizeRange(minSize, maxSize)
+	}
+
+	// Fallback to traditional search
+	var results []*DirectoryNode
+	dt.walkAndCollect(dt.Root, func(node *DirectoryNode) bool {
+		return node.Metadata.Size >= minSize && node.Metadata.Size <= maxSize
+	}, &results)
+	return results
+}
+
+// FindByTimeRange finds directories modified within a time range
+func (dt *DirectoryTree) FindByTimeRange(start, end time.Time) []*DirectoryNode {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if dt.multiIndex != nil {
+		return dt.multiIndex.QueryByTimeRange(start, end)
+	}
+
+	// Fallback to traditional search
+	var results []*DirectoryNode
+	dt.walkAndCollect(dt.Root, func(node *DirectoryNode) bool {
+		modTime := node.Metadata.ModifiedAt
+		return !modTime.Before(start) && !modTime.After(end)
+	}, &results)
+	return results
+}
+
+// FindByExtension finds directories containing files with specific extension
+func (dt *DirectoryTree) FindByExtension(extension string) []*DirectoryNode {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if dt.multiIndex != nil {
+		return dt.multiIndex.QueryByExtension(extension)
+	}
+
+	// Fallback to traditional search
+	var results []*DirectoryNode
+	dt.walkAndCollect(dt.Root, func(node *DirectoryNode) bool {
+		for _, file := range node.Files {
+			if strings.EqualFold(file.Extension, extension) {
+				return true
+			}
+		}
+		return false
+	}, &results)
+	return results
+}
+
+// FindByCategory finds directories containing files of specific category
+func (dt *DirectoryTree) FindByCategory(category string) []*DirectoryNode {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if dt.multiIndex != nil {
+		return dt.multiIndex.QueryByCategory(category)
+	}
+
+	// Fallback to traditional search - would need category logic
+	return []*DirectoryNode{}
+}
+
+// AddNode adds a directory node to all indexes
+func (dt *DirectoryTree) AddNode(node *DirectoryNode) error {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	// Add to traditional KD-Tree
+	dt.InsertNodeToKDTreeIncremental(node)
+
+	// Add to path index
+	if dt.pathIndex != nil {
+		if err := dt.pathIndex.Insert(node); err != nil {
+			dt.logger.Error("Failed to insert node into path index", "error", err, "path", node.Path)
+		}
+	}
+
+	// Add to multi-index
+	if dt.multiIndex != nil {
+		if err := dt.multiIndex.Insert(node); err != nil {
+			dt.logger.Error("Failed to insert node into multi-index", "error", err, "path", node.Path)
+		}
+	}
+
+	return nil
+}
+
+// RemoveNode removes a directory node from all indexes
+func (dt *DirectoryTree) RemoveNode(path string) bool {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	// Remove from path index
+	removed := false
+	if dt.pathIndex != nil {
+		removed = dt.pathIndex.Remove(path)
+	}
+
+	// TODO: Add removal from other indexes when implemented
+
+	return removed
+}
+
+// GetIndexStats returns performance statistics from all indexes
+func (dt *DirectoryTree) GetIndexStats() (map[string]interface{}, error) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	stats := make(map[string]interface{})
+
+	if dt.pathIndex != nil {
+		stats["path_index"] = dt.pathIndex.GetStats()
+	}
+
+	if dt.multiIndex != nil {
+		stats["multi_index"] = dt.multiIndex.GetStats()
+	}
+
+	return stats, nil
+}
+
+// ValidateIndexes performs integrity checking across all indexes
+func (dt *DirectoryTree) ValidateIndexes() []error {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	var errors []error
+
+	if dt.pathIndex != nil {
+		pathErrors := dt.pathIndex.Validate()
+		errors = append(errors, pathErrors...)
+	}
+
+	if dt.multiIndex != nil {
+		multiErrors := dt.multiIndex.Validate()
+		errors = append(errors, multiErrors...)
+	}
+
+	return errors
+}
+
+// Helper methods
+
+// findNodeByPath performs traditional recursive path search (fallback)
+func (dt *DirectoryTree) findNodeByPath(node *DirectoryNode, targetPath string) *DirectoryNode {
+	if node == nil {
+		return nil
+	}
+
+	if node.Path == targetPath {
+		return node
+	}
+
+	for _, child := range node.Children {
+		if result := dt.findNodeByPath(child, targetPath); result != nil {
+			return result
+		}
+	}
+
+	return nil
+}
+
+// walkAndCollect performs traditional recursive walk with predicate (fallback)
+func (dt *DirectoryTree) walkAndCollect(node *DirectoryNode, predicate func(*DirectoryNode) bool, results *[]*DirectoryNode) {
+	if node == nil {
+		return
+	}
+
+	if predicate(node) {
+		*results = append(*results, node)
+	}
+
+	for _, child := range node.Children {
+		dt.walkAndCollect(child, predicate, results)
+	}
 }

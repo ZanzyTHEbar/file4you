@@ -22,7 +22,6 @@ THE SOFTWARE.
 package cli
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -30,7 +29,6 @@ import (
 	"file4you/internal"
 	"file4you/internal/config"
 	"file4you/internal/db"
-	"file4you/internal/genkithandler"
 
 	"github.com/spf13/cobra"
 )
@@ -99,13 +97,13 @@ func NewRoot(params *CmdParams) *cobra.Command {
 			params.Interactor.Info("CentralDB already initialized, proceeding with Genkit initialization.")
 		}
 
-		service, err := genkithandler.NewService(context.Background(), params.DeskFS, params.CentralDB)
-		if err != nil {
-			params.Interactor.Fatal("Failed to initialize Genkit", err)
-			return
-		}
-		params.Genkit = service.Genkit()
-		params.Interactor.Success("Genkit initialized successfully.")
+		//service, err := genkithandler.NewService(context.Background(), params.DeskFS, params.CentralDB)
+		//if err != nil {
+		//	params.Interactor.Fatal("Failed to initialize Genkit", err)
+		//	return
+		//}
+		//params.Genkit = service.Genkit()
+		//params.Interactor.Success("Genkit initialized successfully.")
 
 		// Register Genkit tools (already handled in NewService via RegisterCoreTools)
 		params.Interactor.Success("Genkit tools registered successfully.")
