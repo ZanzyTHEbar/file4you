@@ -80,3 +80,30 @@ type FileOperations interface {
 	CalculateChecksum(path string) (string, error)
 	GetFileInfo(path string) (*trees.FileNode, error)
 }
+
+// GitService defines git repository operations
+type GitService interface {
+	// Repository management
+	InitRepository(ctx context.Context, dir string) error
+	IsRepository(dir string) bool
+	IsGitRepository(ctx context.Context, dir string) (bool, error) // Add convenience method for tests
+
+	// File operations
+	AddFiles(ctx context.Context, repoDir string, paths ...string) error
+	CommitChanges(ctx context.Context, repoDir, message string) error
+	AddAndCommit(ctx context.Context, repoDir, message string) error
+
+	// Status and inspection
+	HasUncommittedChanges(ctx context.Context, repoDir string) (bool, error)
+	FileHasUncommittedChanges(ctx context.Context, repoDir, path string) (bool, error)
+	GetCommitHistory(ctx context.Context, repoDir string) ([]string, error)
+
+	// Stash operations
+	StashCreate(ctx context.Context, repoDir, message string) error
+	StashPop(ctx context.Context, repoDir string, forceOverwrite bool) error
+
+	// Reset and rewind operations
+	CheckoutFile(ctx context.Context, repoDir, path string) error
+	ClearUncommittedChanges(ctx context.Context, repoDir string) error
+	Rewind(ctx context.Context, repoDir, targetSha string) error
+}

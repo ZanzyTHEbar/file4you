@@ -71,7 +71,7 @@ func NewConcurrentTraverser(ctx context.Context) *ConcurrentTraverser {
 
 // TraverseDirectory performs concurrent directory traversal using conc.Pool
 // for optimal performance and resource management
-func (ct *ConcurrentTraverser) TraverseDirectory(rootPath string, recursive bool, maxDepth int, dfs *DesktopFS) (*trees.DirectoryNode, error) {
+func (ct *ConcurrentTraverser) TraverseDirectory(rootPath string, recursive bool, maxDepth int, dfs *DesktopFileSystem) (*trees.DirectoryNode, error) {
 	// Initialize root node
 	rootNode := trees.NewDirectoryNode(rootPath, nil)
 
@@ -132,7 +132,7 @@ func (ct *ConcurrentTraverser) TraverseDirectory(rootPath string, recursive bool
 }
 
 // processDirectoryNode processes a single directory node with optimized I/O operations
-func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode *trees.DirectoryNode, depth, maxDepth int, dfs *DesktopFS) TraversalResult {
+func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode *trees.DirectoryNode, depth, maxDepth int, dfs *DesktopFileSystem) TraversalResult {
 	result := TraversalResult{
 		Node: dirNode,
 		Path: dirNode.Path,
@@ -173,7 +173,7 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 	}
 
 	// Get ignore patterns
-	ignored, err := dfs.GetDesktopCleanerIgnore(dirNode.Path)
+	ignored, err := dfs. GetDesktopCleanerIgnore(dirNode.Path)
 	if err != nil {
 		slog.Warn(fmt.Sprintf("Failed to get ignore patterns for %s: %v", dirNode.Path, err))
 	}
@@ -220,7 +220,7 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 
 // TraverseDirectoryWithPool performs concurrent directory traversal using conc.Pool directly
 // This is an alternative implementation that leverages the pool for fine-grained control
-func (ct *ConcurrentTraverser) TraverseDirectoryWithPool(rootPath string, recursive bool, maxDepth int, dfs *DesktopFS) (*trees.DirectoryNode, error) {
+func (ct *ConcurrentTraverser) TraverseDirectoryWithPool(rootPath string, recursive bool, maxDepth int, dfs *DesktopFileSystem) (*trees.DirectoryNode, error) {
 	// Initialize root node
 	rootNode := trees.NewDirectoryNode(rootPath, nil)
 

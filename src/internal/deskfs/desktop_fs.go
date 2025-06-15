@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"file4you/internal/config"
@@ -16,6 +17,8 @@ import (
 	"file4you/internal/deskfs/utils"
 	"file4you/internal/filesystem/trees"
 	"file4you/internal/ui"
+
+	ignore "github.com/sabhiram/go-gitignore"
 )
 
 // DesktopFileSystem is the main filesystem manager for the file4you application.
@@ -26,6 +29,7 @@ type DesktopFileSystem struct {
 	fileOperations      interfaces.FileOperations
 	organizationService interfaces.OrganizationService
 	conflictResolver    interfaces.ConflictResolver
+	gitService          interfaces.GitService
 
 	// Utilities
 	pathUtils   *utils.PathUtils
@@ -79,6 +83,7 @@ func NewDesktopFileSystem(interactor ui.Interactor, centralDB db.ICentralDBProvi
 	// Create services in correct order
 	conflictResolver := services.NewConflictResolverService()
 	fileOperations := services.NewFileOperationsService(conflictResolver, cacheDir)
+	gitService := services.NewGitService()
 	// For now, pass nil for ConcurrentTraverser - will be implemented later
 	directoryService := services.NewDirectoryManagerService(nil, centralDB.GetDirectoryTree())
 	organizationService := services.NewOrganizationService(conflictResolver, fileOperations, directoryService)
@@ -88,6 +93,7 @@ func NewDesktopFileSystem(interactor ui.Interactor, centralDB db.ICentralDBProvi
 		fileOperations:      fileOperations,
 		organizationService: organizationService,
 		conflictResolver:    conflictResolver,
+		gitService:          gitService,
 		pathUtils:           pathUtils,
 		fileUtils:           fileUtils,
 		depthUtils:          depthUtils,
@@ -132,7 +138,7 @@ func (dfs *DesktopFileSystem) OrganizeDirectory(ctx context.Context, sourceDir, 
 		return nil, fmt.Errorf("organization failed: %w", err)
 	}
 
-	// For now, return a basic result (the actual result would come from a different method)
+	// FIXME: For now, return a basic result (the actual result would come from a different method)
 	result := &types.OrganizationResult{
 		StartTime:      start,
 		EndTime:        time.Now(),
@@ -232,6 +238,42 @@ func (dfs *DesktopFileSystem) DetectConflict(ctx context.Context, srcPath, dstPa
 	return dfs.conflictResolver.DetectConflict(ctx, srcPath, dstPath)
 }
 
+// Git service methods for repository management
+
+func (dfs *DesktopFileSystem) IsGitRepo(dir string) bool {
+	return dfs.gitService.IsRepository(dir)
+}
+
+func (dfs *DesktopFileSystem) InitGitRepo(dir string) error {
+	ctx := context.Background()
+	return dfs.gitService.InitRepository(ctx, dir)
+}
+
+func (dfs *DesktopFileSystem) GitRewind(dir string, stepsOrSha string) error {
+	ctx := context.Background()
+	return dfs.gitService.Rewind(ctx, dir, stepsOrSha)
+}
+
+func (dfs *DesktopFileSystem) GitAddAndCommit(dir, message string) error {
+	ctx := context.Background()
+	return dfs.gitService.AddAndCommit(ctx, dir, message)
+}
+
+func (dfs *DesktopFileSystem) GitHasUncommittedChanges(dir string) (bool, error) {
+	ctx := context.Background()
+	return dfs.gitService.HasUncommittedChanges(ctx, dir)
+}
+
+func (dfs *DesktopFileSystem) GitStashCreate(dir, message string) error {
+	ctx := context.Background()
+	return dfs.gitService.StashCreate(ctx, dir, message)
+}
+
+func (dfs *DesktopFileSystem) GitStashPop(dir string, forceOverwrite bool) error {
+	ctx := context.Background()
+	return dfs.gitService.StashPop(ctx, dir, forceOverwrite)
+}
+
 // Utility methods
 
 // CalculateMaxDepth calculates the maximum depth of a directory tree
@@ -254,52 +296,28 @@ func (dfs *DesktopFileSystem) GetDirectoryTree() *trees.DirectoryTree {
 	return dfs.workspaceManager.centralDB.GetDirectoryTree()
 }
 
-// Legacy compatibility methods (to be phased out)
+// GetDesktopCleanerIgnore loads ignore patterns for file organization
+func (dfs *DesktopFileSystem) GetDesktopCleanerIgnore(dir string) (*ignore.GitIgnore, error) {
+	ignorePath := filepath.Join(dir, ".file4you-ignore")
 
-// EnhancedOrganize provides backward compatibility with the old interface
-func (dfs *DesktopFileSystem) EnhancedOrganize(cfg *config.File4YouConfig, params *FilePathParams) error {
-	slog.Warn("Using deprecated EnhancedOrganize method, please migrate to OrganizeDirectory")
-
-	// Convert old parameters to new options
-	opts := options.OrganizationOptions{
-		SourceDir:          params.SourceDir,
-		TargetDir:          params.TargetDir,
-		DryRun:             params.DryRun,
-		ConflictResolution: convertConflictResolution(params.ConflictResolution),
-		CopyInsteadOfMove:  params.CopyFiles,
-		RemoveAfter:        params.RemoveAfter,
-		GitEnabled:         params.GitEnabled,
-		Recursive:          params.Recursive,
-		MaxDepth:           params.MaxDepth,
-		WorkerCount:        4,
-		BatchSize:          100,
-		CategoryRules:      make(map[string][]string),
+	if _, err := os.Stat(ignorePath); err == nil {
+		ignored, err := ignore.CompileIgnoreFile(ignorePath)
+		if err != nil {
+			return nil, fmt.Errorf("error reading .file4you-ignore file: %w", err)
+		}
+		return ignored, nil
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("error checking for .file4you-ignore file: %w", err)
 	}
 
-	ctx := context.Background()
-	_, err := dfs.OrganizeDirectory(ctx, params.SourceDir, params.TargetDir, opts)
-	return err
+	return nil, nil
 }
 
-// convertConflictResolution converts old conflict resolution to new type
-func convertConflictResolution(old ConflictResolutionType) options.ConflictStrategy {
-	switch old {
-	case Overwrite:
-		return options.ConflictOverwrite
-	case Skip:
-		return options.ConflictSkip
-	case RenameSuffix:
-		return options.ConflictRename
-	default:
-		return options.ConflictRename
-	}
-}
+// Public API methods for CLI and external access
 
-// Getters for backward compatibility
-
-// GetHomeDir returns the home directory
-func (dfs *DesktopFileSystem) GetHomeDir() string {
-	return dfs.homeDir
+// GetWorkspaceManager returns the workspace manager
+func (dfs *DesktopFileSystem) GetWorkspaceManager() *WorkspaceManager {
+	return dfs.workspaceManager
 }
 
 // GetCwd returns the current working directory
@@ -307,22 +325,54 @@ func (dfs *DesktopFileSystem) GetCwd() string {
 	return dfs.cwd
 }
 
-// GetCacheDir returns the cache directory
-func (dfs *DesktopFileSystem) GetCacheDir() string {
-	return dfs.cacheDir
-}
-
-// GetWorkspaceManager returns the workspace manager
-func (dfs *DesktopFileSystem) GetWorkspaceManager() *WorkspaceManager {
-	return dfs.workspaceManager
-}
-
 // GetConfig returns the configuration
 func (dfs *DesktopFileSystem) GetConfig() *config.File4YouConfig {
 	return dfs.config
 }
 
-// GetTerminal returns the terminal interactor
-func (dfs *DesktopFileSystem) GetTerminal() ui.Interactor {
-	return dfs.terminal
+// GetGitService returns the git service for git operations
+func (dfs *DesktopFileSystem) GetGitService() interfaces.GitService {
+	return dfs.gitService
+}
+
+// Service accessor methods
+
+// GetDirectoryService returns the directory service instance
+func (dfs *DesktopFileSystem) GetDirectoryService() interfaces.DirectoryService {
+	return dfs.directoryService
+}
+
+// GetFileOperations returns the file operations service instance
+func (dfs *DesktopFileSystem) GetFileOperations() interfaces.FileOperations {
+	return dfs.fileOperations
+}
+
+// GetOrganizationService returns the organization service instance
+func (dfs *DesktopFileSystem) GetOrganizationService() interfaces.OrganizationService {
+	return dfs.organizationService
+}
+
+// GetConflictResolver returns the conflict resolver service instance
+func (dfs *DesktopFileSystem) GetConflictResolver() interfaces.ConflictResolver {
+	return dfs.conflictResolver
+}
+
+// OrganizeWithOptions organizes files using the new options system
+func (dfs *DesktopFileSystem) OrganizeWithOptions(ctx context.Context, opts options.OrganizationOptions) error {
+	return dfs.organizationService.OrganizeFiles(ctx, opts)
+}
+
+// Legacy compatibility methods - TODO: Remove after CLI migration
+
+// EnhancedOrganize provides legacy compatibility for the CLI organizer
+func (dfs *DesktopFileSystem) EnhancedOrganize(cfg *config.File4YouConfig, params *options.FilePathParams) error {
+	ctx := context.Background()
+	opts := params.ToOrganizationOptions()
+	opts.Config = cfg
+	return dfs.OrganizeWithOptions(ctx, opts)
+}
+
+// InstanceConfig returns the instance configuration for legacy compatibility
+func (dfs *DesktopFileSystem) InstanceConfig() *config.File4YouConfig {
+	return dfs.config
 }

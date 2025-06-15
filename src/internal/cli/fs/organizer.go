@@ -2,7 +2,7 @@ package fs
 
 import (
 	"file4you/internal/cli"
-	deskfs "file4you/internal/deskfs"
+	"file4you/internal/deskfs/options"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -12,7 +12,7 @@ type OrganizeCMD struct {
 	Organize *cobra.Command
 }
 
-var fileParams *deskfs.FilePathParams = deskfs.NewFilePathParams()
+var fileParams *options.FilePathParams = options.NewFilePathParams()
 
 func NewOrganize(params *cli.CmdParams) *cobra.Command {
 	organizeCmd := &cobra.Command{
@@ -77,7 +77,7 @@ func organizeFiles(params *cli.CmdParams) error {
 	}
 
 	// Execute the organization logic with EnhancedOrganize
-	if err := params.DeskFS.EnhancedOrganize(params.DeskFS.InstanceConfig, fileParams); err != nil {
+	if err := params.DeskFS.EnhancedOrganize(params.DeskFS.InstanceConfig(), fileParams); err != nil {
 		params.Interactor.StopSpinner(false, "Organization failed.")
 		params.Interactor.Error("Error organizing files", err)
 		return err

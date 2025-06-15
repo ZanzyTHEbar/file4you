@@ -1,42 +1,38 @@
 package deskfs
 
 import (
-	// "file4you/internal/cli" // Removed to break import cycle
-	"file4you/internal/config" // Import the new config package
-	"file4you/internal/db"
-	"file4you/internal/filesystem/trees"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"file4you/internal/ui" // For ui.Interactor if ShowCustomHelp needs types from it
+	"file4you/internal/config"
+	"file4you/internal/db"
+	"file4you/internal/filesystem/trees"
 
 	"github.com/stretchr/testify/assert"
 )
 
-// TODO: Setup mock filesystem & Database for testing
-// TODO: Test workspaces feature
+// Test configuration helpers
 
-// loadTestConfig now directly uses the global AppConfig, similar to how InitConfig works.
-// Specific test configurations if needed would have to be managed by setting AppConfig fields
-// before calling functions that use it, or by passing a modified config struct directly.
-func loadTestConfig(configPath string, interactor ui.Interactor) *config.File4YouConfig {
-	// Reset the global config first to ensure test isolation
-	config.AppConfig = config.Config{}
+func setupTestConfig(t *testing.T) func() {
+	// Store original config
+	originalConfig := config.AppConfig
 
-	// Ensure global config is loaded if not already (e.g. by a main test setup)
-	if _, err := config.LoadConfig(configPath); err != nil {
-		slog.Error("loadTestConfig: Failed to load global config", "error", err)
-		// Return a default config for failed loads
-		return &config.File4YouConfig{
-			TargetDir:              ".",
-			CacheDir:               "/tmp/file4you-cache",
-			OrganizeTimeoutMinutes: 10,
-		}
+	// Set test configuration
+	config.AppConfig = config.Config{
+		File4You: config.File4YouConfig{
+			TargetDir:              "/tmp/file4you-test",
+			CacheDir:               "/tmp/file4you-cache-test",
+			OrganizeTimeoutMinutes: 5,
+		},
 	}
-	return &config.AppConfig.File4You
+
+	// Return cleanup function
+	return func() {
+		config.AppConfig = originalConfig
+	}
 }
 
 // Helper to create a temporary directory structure for tests
@@ -123,7 +119,10 @@ file4you:
 func TestBuildTreeAndCache(t *testing.T) {
 	interactor := &mockInteractor{} // Use mock interactor
 	mockDBProvider := db.NewMockCentralDBProvider()
-	dfs := NewDesktopFS(interactor, mockDBProvider) // Use interactor
+	dfs, err := NewDesktopFileSystem(interactor, mockDBProvider) // Use new constructor
+	if err != nil {
+		t.Fatalf("Failed to create DesktopFileSystem: %v", err)
+	}
 
 	dir, cleanup := setupTestDir(t, map[string]string{
 		"docs/report.docx": "",

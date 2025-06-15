@@ -28,7 +28,10 @@ func main() {
 	}
 	defer centralDB.Close()
 
-	deskFS := deskfs.NewDesktopFS(interactor, centralDB)
+	deskFS, err := deskfs.NewDesktopFileSystem(interactor, centralDB)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize desktop file system")
+	}
 
 	cmdParams := &cli.CmdParams{
 		DeskFS:     deskFS,

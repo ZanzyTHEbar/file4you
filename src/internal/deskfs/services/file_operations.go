@@ -154,53 +154,6 @@ func (fos *FileOperationsService) Move(ctx context.Context, src *trees.Directory
 	return nil
 }
 
-// MoveFile moves a single file with cross-device fallback
-func (fos *FileOperationsService) MoveFile(ctx context.Context, srcPath, dstPath string, opts options.MoveOptions) error {
-	start := time.Now()
-	defer fos.updateMetrics(start, false)
-
-	if opts.DryRun {
-		slog.Info("Dry run: would move file", "src", srcPath, "dst", dstPath)
-		return nil
-	}
-
-	// Check for context cancellation
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
-
-	// Handle conflicts
-	if err := fos.handleFileConflict(ctx, srcPath, dstPath, opts.Conflict); err != nil {
-		return fmt.Errorf("conflict resolution failed: %w", err)
-	}
-
-	// Try direct rename first
-	err := os.Rename(srcPath, dstPath)
-	if err == nil {
-		fos.metrics.SuccessfulOps++
-		return nil
-	}
-
-	// Handle cross-device link error with fallback
-	if fos.isCrossDeviceError(err) && opts.FallbackToCopy {
-		slog.Warn("Cross-device move detected, falling back to copy+delete", "src", srcPath, "dst", dstPath)
-
-		copyOpts := options.CopyOptions{
-			RemoveSource:  true,
-			DryRun:        false,
-			Conflict:      opts.Conflict,
-			PreservePerms: opts.PreservePerms,
-		}
-
-		return fos.CopyFile(ctx, srcPath, dstPath, copyOpts)
-	}
-
-	fos.metrics.FailedOps++
-	return fmt.Errorf("move operation failed: %w", err)
-}
-
 // Delete deletes a file or directory
 func (fos *FileOperationsService) Delete(ctx context.Context, path string, opts options.DeleteOptions) error {
 	start := time.Now()
@@ -344,6 +297,148 @@ func (fos *FileOperationsService) DeleteDirectory(ctx context.Context, path stri
 
 	// Non-recursive delete - directory must be empty
 	return os.Remove(path)
+}
+
+// DeleteFile deletes a single file
+func (fos *FileOperationsService) DeleteFile(ctx context.Context, path string) error {
+	start := time.Now()
+	defer fos.updateMetrics(start, false)
+
+	// Validate path
+	if err := fos.ValidatePath(path); err != nil {
+		return fmt.Errorf("invalid path: %w", err)
+	}
+
+	// Check if file exists
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("file does not exist: %s", path)
+		}
+		return fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	// Ensure it's not a directory
+	if info.IsDir() {
+		return fmt.Errorf("path is a directory, use DeleteDirectory instead: %s", path)
+	}
+
+	slog.Debug("Deleting file", "path", path)
+
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("failed to delete file %s: %w", path, err)
+	}
+
+	fos.metrics.SuccessfulOps++
+	slog.Info("File deleted successfully", "path", path)
+	return nil
+}
+
+// ValidatePath validates that a path is safe and accessible
+func (fos *FileOperationsService) ValidatePath(path string) error {
+	if path == "" {
+		return fmt.Errorf("path cannot be empty")
+	}
+
+	// Check for invalid characters (basic check)
+	if len(path) > 4096 {
+		return fmt.Errorf("path too long (max 4096 characters)")
+	}
+
+	return nil
+}
+
+// MoveFile
+func (fos *FileOperationsService) MoveFile(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
+	// Convert CopyOptions to MoveOptions for internal use
+	moveOpts := options.MoveOptions{
+		DryRun:         opts.DryRun,
+		Conflict:       opts.Conflict,
+		PreservePerms:  opts.PreservePerms,
+		FallbackToCopy: true,
+		MaxRetries:     3,
+	}
+	return fos.moveFileInternal(ctx, srcPath, dstPath, moveOpts)
+}
+
+// Internal move implementation with MoveOptions
+func (fos *FileOperationsService) moveFileInternal(ctx context.Context, srcPath, dstPath string, opts options.MoveOptions) error {
+	start := time.Now()
+	defer fos.updateMetrics(start, false)
+
+	if opts.DryRun {
+		slog.Info("DRY RUN: Would move file", "source", srcPath, "dest", dstPath)
+		return nil
+	}
+
+	// Validate paths
+	if err := fos.ValidatePath(srcPath); err != nil {
+		return fmt.Errorf("invalid source path: %w", err)
+	}
+	if err := fos.ValidatePath(dstPath); err != nil {
+		return fmt.Errorf("invalid destination path: %w", err)
+	}
+
+	// Check source exists
+	if _, err := os.Stat(srcPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("source file does not exist: %s", srcPath)
+		}
+		return fmt.Errorf("failed to stat source file: %w", err)
+	}
+
+	// Handle conflicts
+	if _, err := os.Stat(dstPath); err == nil {
+		conflictInfo, err := fos.conflictResolver.DetectConflict(ctx, srcPath, dstPath)
+		if err != nil {
+			return fmt.Errorf("failed to detect conflict: %w", err)
+		}
+		
+		resolvedPath, err := fos.conflictResolver.ResolveConflict(ctx, srcPath, dstPath, opts.Conflict)
+		if err != nil {
+			return fmt.Errorf("failed to resolve conflict: %w", err)
+		}
+		
+		if resolvedPath != dstPath {
+			dstPath = resolvedPath
+		}
+		
+		slog.Debug("Conflict resolved", "original", conflictInfo.TargetPath, "resolved", dstPath)
+	}
+
+	// Create destination directory if needed
+	dstDir := filepath.Dir(dstPath)
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Try atomic move first
+	if err := os.Rename(srcPath, dstPath); err != nil {
+		if opts.FallbackToCopy && fos.isCrossDeviceError(err) {
+			// Fallback to copy+delete for cross-device moves
+			copyOpts := options.CopyOptions{
+				Conflict:       opts.Conflict,
+				PreservePerms:  opts.PreservePerms,
+				PreserveTimes:  true,
+				DryRun:         false,
+			}
+			
+			if err := fos.CopyFile(ctx, srcPath, dstPath, copyOpts); err != nil {
+				return fmt.Errorf("failed to copy file during cross-device move: %w", err)
+			}
+			
+			if err := os.Remove(srcPath); err != nil {
+				slog.Error("Failed to remove source after copy", "path", srcPath, "error", err)
+				return fmt.Errorf("failed to remove source file after copy: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to move file: %w", err)
+		}
+	}
+
+	slog.Info("File moved successfully", "source", srcPath, "dest", dstPath)
+	fos.metrics.SuccessfulOps++
+	return nil
 }
 
 // Private helper methods
@@ -523,7 +618,7 @@ func (fos *FileOperationsService) handleFileConflict(ctx context.Context, srcPat
 		if err != nil {
 			return err
 		}
-		// Update dstPath with resolved path
+		// FIXME: Update dstPath with resolved path
 		_ = resolvedPath // For now, just validate resolution worked
 	}
 
@@ -629,14 +724,7 @@ func (fos *FileOperationsService) MoveBatch(ctx context.Context, operations []ty
 
 		switch op.Type {
 		case types.OpMove:
-			moveOpts := options.MoveOptions{
-				DryRun:         opts.DryRun,
-				Conflict:       opts.Conflict,
-				PreservePerms:  opts.PreservePerms,
-				FallbackToCopy: true,
-				MaxRetries:     3,
-			}
-			if err := fos.MoveFile(ctx, op.SourcePath, op.TargetPath, moveOpts); err != nil {
+			if err := fos.MoveFile(ctx, op.SourcePath, op.TargetPath, opts); err != nil {
 				result.SkippedFiles++
 				slog.Error("Failed to move file in batch", "source", op.SourcePath, "error", err)
 				continue
@@ -653,6 +741,3 @@ func (fos *FileOperationsService) MoveBatch(ctx context.Context, operations []ty
 	result.Duration = time.Since(start)
 	return result, nil
 }
-
-// Ensure FileOperationsService implements the interface
-var _ interfaces.FileSystemManager = (*FileOperationsService)(nil)

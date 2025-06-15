@@ -42,7 +42,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 				params.Interactor.Info(fmt.Sprintf("Using current directory: %s", rootPath))
 			}
 
-			workspaceID, err := params.DeskFS.WorkspaceManager.CreateWorkspace(rootPath, config)
+			workspaceID, err := params.DeskFS.GetWorkspaceManager().CreateWorkspace(rootPath, config)
 			if err != nil {
 				params.Interactor.Error("Error creating workspace", err)
 				return err
@@ -71,7 +71,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 				return err
 			}
 
-			err = params.DeskFS.WorkspaceManager.UpdateWorkspace(workspaceUUID, config)
+			err = params.DeskFS.GetWorkspaceManager().UpdateWorkspace(workspaceUUID, config)
 			if err != nil {
 				params.Interactor.Error(fmt.Sprintf("Error updating workspace with ID %s", idStr), err)
 				return err
@@ -89,7 +89,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 		Short: "List all workspaces",
 		Long:  `List all workspaces with their IDs and root paths.`,
 		RunE: func(cmd *cobra.Command, args []string) error { // Changed to RunE
-			workspaces, err := params.DeskFS.WorkspaceManager.ListWorkspaces()
+			workspaces, err := params.DeskFS.GetWorkspaceManager().ListWorkspaces()
 			if err != nil {
 				params.Interactor.Error("Error listing workspaces", err)
 				return err
@@ -136,7 +136,7 @@ func NewWorkspace(params *cli.CmdParams) *cobra.Command {
 			}
 
 			params.Interactor.StartSpinner(fmt.Sprintf("Deleting workspace %s...", idStr))
-			err = params.DeskFS.WorkspaceManager.DeleteWorkspace(workspaceUUID)
+			err = params.DeskFS.GetWorkspaceManager().DeleteWorkspace(workspaceUUID)
 			if err != nil {
 				params.Interactor.StopSpinner(false, "Deletion failed.")
 				params.Interactor.Error(fmt.Sprintf("Error deleting workspace with ID %s", idStr), err)

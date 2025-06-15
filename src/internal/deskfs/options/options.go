@@ -197,3 +197,40 @@ func DefaultOrganizationOptions() OrganizationOptions {
 		CategoryRules:      make(map[string][]string),
 	}
 }
+
+// Legacy compatibility types - TODO: Remove after CLI migration
+
+// FilePathParams provides legacy compatibility for CLI
+type FilePathParams struct {
+	SourceDir   string
+	TargetDir   string
+	Recursive   bool
+	DryRun      bool
+	MaxDepth    int
+	GitEnabled  bool
+	CopyFiles   bool
+	RemoveAfter bool
+}
+
+// NewFilePathParams creates a new FilePathParams with defaults
+func NewFilePathParams() *FilePathParams {
+	return &FilePathParams{
+		MaxDepth: -1,
+	}
+}
+
+// ToOrganizationOptions converts legacy params to new options
+func (fp *FilePathParams) ToOrganizationOptions() OrganizationOptions {
+	return OrganizationOptions{
+		SourceDir:         fp.SourceDir,
+		TargetDir:         fp.TargetDir,
+		Recursive:         fp.Recursive,
+		DryRun:            fp.DryRun,
+		MaxDepth:          fp.MaxDepth,
+		GitEnabled:        fp.GitEnabled,
+		CopyInsteadOfMove: fp.CopyFiles,
+		RemoveAfter:       fp.RemoveAfter,
+		WorkerCount:       4,
+		BatchSize:         100,
+	}
+}

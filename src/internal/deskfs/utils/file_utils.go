@@ -64,11 +64,6 @@ func (pu *PathUtils) SplitPath(path string) (dir, name, ext string) {
 	return dir, name, ext
 }
 
-// JoinPath safely joins path components
-func (pu *PathUtils) JoinPath(components ...string) string {
-	return filepath.Join(components...)
-}
-
 // ValidatePath validates that a path is safe and accessible
 func (pu *PathUtils) ValidatePath(path string) error {
 	if path == "" {
@@ -369,7 +364,7 @@ func (su *SafetyUtils) checkDiskSpace(srcPath, dstPath string) error {
 		return fmt.Errorf("failed to stat source: %w", err)
 	}
 
-	// For simplicity, assume we need at least the source size in destination
+	// FIXME: For simplicity, assume we need at least the source size in destination
 	// In a full implementation, we'd calculate available disk space
 	if srcInfo.Size() > 1024*1024*1024 { // > 1GB
 		// Could add actual disk space checking here

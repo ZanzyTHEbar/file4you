@@ -77,7 +77,7 @@ func NewRoot(params *CmdParams) *cobra.Command {
 			return
 		}
 
-		params.DeskFS.InitConfig(cfgFile, params.Interactor)
+		// Configuration is now handled during DesktopFileSystem initialization
 		// The rest of the Genkit initialization seems okay, assuming DeskFS and CentralDB are correctly initialized.
 		params.Interactor.Output("Initializing Genkit...")
 		if params.DeskFS == nil {
