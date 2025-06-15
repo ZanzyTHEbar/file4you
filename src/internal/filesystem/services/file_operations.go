@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"file4you/internal/deskfs/interfaces"
-	"file4you/internal/deskfs/options"
-	"file4you/internal/deskfs/types"
-	"file4you/internal/filesystem/trees"
+	"file4you/internal/filesystem/interfaces"
+	"file4you/internal/filesystem/options"
+	"file4you/internal/filesystem/types"
+	"file4you/internal/trees"
 )
 
 // FileOperationsService provides high-performance file operations
@@ -393,16 +393,16 @@ func (fos *FileOperationsService) moveFileInternal(ctx context.Context, srcPath,
 		if err != nil {
 			return fmt.Errorf("failed to detect conflict: %w", err)
 		}
-		
+
 		resolvedPath, err := fos.conflictResolver.ResolveConflict(ctx, srcPath, dstPath, opts.Conflict)
 		if err != nil {
 			return fmt.Errorf("failed to resolve conflict: %w", err)
 		}
-		
+
 		if resolvedPath != dstPath {
 			dstPath = resolvedPath
 		}
-		
+
 		slog.Debug("Conflict resolved", "original", conflictInfo.TargetPath, "resolved", dstPath)
 	}
 
@@ -417,16 +417,16 @@ func (fos *FileOperationsService) moveFileInternal(ctx context.Context, srcPath,
 		if opts.FallbackToCopy && fos.isCrossDeviceError(err) {
 			// Fallback to copy+delete for cross-device moves
 			copyOpts := options.CopyOptions{
-				Conflict:       opts.Conflict,
-				PreservePerms:  opts.PreservePerms,
-				PreserveTimes:  true,
-				DryRun:         false,
+				Conflict:      opts.Conflict,
+				PreservePerms: opts.PreservePerms,
+				PreserveTimes: true,
+				DryRun:        false,
 			}
-			
+
 			if err := fos.CopyFile(ctx, srcPath, dstPath, copyOpts); err != nil {
 				return fmt.Errorf("failed to copy file during cross-device move: %w", err)
 			}
-			
+
 			if err := os.Remove(srcPath); err != nil {
 				slog.Error("Failed to remove source after copy", "path", srcPath, "error", err)
 				return fmt.Errorf("failed to remove source file after copy: %w", err)

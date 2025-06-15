@@ -1,11 +1,11 @@
-package deskfs
+package filesystem
 
 import (
 	"context"
 	"testing"
 
 	"file4you/internal/db"
-	"file4you/internal/deskfs/options"
+	"file4you/internal/filesystem/options"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,14 +22,14 @@ func (m *mockInteractor) PromptYesNo(message string) bool                      {
 func (m *mockInteractor) PromptChoice(message string, choices []string) string { return choices[0] }
 func (m *mockInteractor) PromptInput(message string) string                    { return "test" }
 
-func TestNewDesktopFileSystem(t *testing.T) {
+func TestNew(t *testing.T) {
 	interactor := &mockInteractor{}
 	mockDBProvider := db.NewMockCentralDBProvider()
 
-	dfs, err := NewDesktopFileSystem(interactor, mockDBProvider)
+	dfs, err := New(interactor, mockDBProvider)
 
-	require.NoError(t, err, "Should create DesktopFileSystem without error")
-	require.NotNil(t, dfs, "DesktopFileSystem should not be nil")
+	require.NoError(t, err, "Should create FileSystem without error")
+	require.NotNil(t, dfs, "FileSystem should not be nil")
 
 	// Test basic accessors
 	assert.NotEmpty(t, dfs.GetCwd(), "Should have current working directory")
@@ -67,7 +67,7 @@ func TestGitServiceIntegration(t *testing.T) {
 	interactor := &mockInteractor{}
 	mockDBProvider := db.NewMockCentralDBProvider()
 
-	dfs, err := NewDesktopFileSystem(interactor, mockDBProvider)
+	dfs, err := New(interactor, mockDBProvider)
 	require.NoError(t, err)
 
 	// Test git service accessibility
@@ -83,7 +83,7 @@ func TestMaxDepthCalculation(t *testing.T) {
 	interactor := &mockInteractor{}
 	mockDBProvider := db.NewMockCentralDBProvider()
 
-	dfs, err := NewDesktopFileSystem(interactor, mockDBProvider)
+	dfs, err := New(interactor, mockDBProvider)
 	require.NoError(t, err)
 
 	// Test max depth calculation
@@ -98,7 +98,7 @@ func TestServiceArchitecture(t *testing.T) {
 	interactor := &mockInteractor{}
 	mockDBProvider := db.NewMockCentralDBProvider()
 
-	dfs, err := NewDesktopFileSystem(interactor, mockDBProvider)
+	dfs, err := New(interactor, mockDBProvider)
 	require.NoError(t, err)
 
 	// Test that all services are properly initialized

@@ -1,4 +1,4 @@
-package deskfs
+package filesystem
 
 import (
 	// "context" // No longer used directly here, assert handler removed
@@ -156,8 +156,8 @@ func Init() error {
 	}
 
 	// Index the filesystem and create metadata entries
-	fs := deskfs.NewDesktopFS(nil)
-	directoryTree, err := deskfs.NewDirectoryTree(pwd)
+	fs := filesystem.NewDesktopFS(nil)
+	directoryTree, err := filesystem.NewDirectoryTree(pwd)
 	if err != nil {
 		return fmt.Errorf("failed to create directory tree: %w", err)
 	}
@@ -186,7 +186,7 @@ func Init() error {
 // The following commented block is removed as it was causing an unterminated comment error
 // and appears to be old/unused code.
 /*
-func (db *SQLiteWorkspaceDB) AddFileMetadata(workspaceID uuid.UUID, path string, metadata deskfs.Metadata) error {
+func (db *SQLiteWorkspaceDB) AddFileMetadata(workspaceID uuid.UUID, path string, metadata filesystem.Metadata) error {
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata into JSON: %w", err)
@@ -201,7 +201,7 @@ func (db *SQLiteWorkspaceDB) AddFileMetadata(workspaceID uuid.UUID, path string,
 }
 
 // UpdateFileMetadata updates the metadata for a given file in the workspace
-func (db *SQLiteWorkspaceDB) UpdateFileMetadata(workspaceID uuid.UUID, path string, metadata deskfs.Metadata) error {
+func (db *SQLiteWorkspaceDB) UpdateFileMetadata(workspaceID uuid.UUID, path string, metadata filesystem.Metadata) error {
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata into JSON: %w", err)

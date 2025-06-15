@@ -81,7 +81,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Add defaults for all known feature flags.
 	// viper.SetDefault("file4you.genkithandler.featureFlags.someNewFeature", false)
 
-	// Defaults from the old deskfs.Config / new consolidated fields
+	// Defaults from the old filesystem.Config / new consolidated fields
 	// Ensure internal.DefaultCacheDir, internal.DefaultDatabaseDSN, internal.DefaultDatabaseType are defined.
 	viper.SetDefault("file4you.targetDir", ".")
 	// Assuming internal.DefaultCacheDir is defined, e.g., in internal/globals.go

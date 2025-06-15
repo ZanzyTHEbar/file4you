@@ -2,7 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"file4you/internal/filesystem/trees"
+	"file4you/internal/trees"
 
 	"github.com/google/uuid"
 )

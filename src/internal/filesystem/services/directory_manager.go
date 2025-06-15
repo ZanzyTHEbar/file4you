@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"file4you/internal/deskfs/interfaces"
-	"file4you/internal/deskfs/options"
-	"file4you/internal/deskfs/types"
-	"file4you/internal/filesystem/trees"
+	"file4you/internal/filesystem/interfaces"
+	"file4you/internal/filesystem/options"
+	"file4you/internal/filesystem/types"
+	"file4you/internal/trees"
 )
 
 // DirectoryManagerService provides high-performance directory management

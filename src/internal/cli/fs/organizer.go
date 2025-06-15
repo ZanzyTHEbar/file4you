@@ -2,7 +2,7 @@ package fs
 
 import (
 	"file4you/internal/cli"
-	"file4you/internal/deskfs/options"
+	"file4you/internal/filesystem/options"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -61,9 +61,9 @@ func organizeFiles(params *cli.CmdParams) error {
 
 	// Initialize Git if Git is enabled and repository is not already initialized
 	if fileParams.GitEnabled {
-		if !params.DeskFS.IsGitRepo(fileParams.SourceDir) {
+		if !params.Filesystem.IsGitRepo(fileParams.SourceDir) {
 			params.Interactor.Info("Git operations enabled, but no Git repository detected. Initializing Git repository.")
-			if err := params.DeskFS.InitGitRepo(fileParams.SourceDir); err != nil {
+			if err := params.Filesystem.InitGitRepo(fileParams.SourceDir); err != nil {
 				params.Interactor.StopSpinner(false, "Git initialization failed.")
 				params.Interactor.Error("Error initializing Git repository", err)
 				return err
@@ -77,7 +77,7 @@ func organizeFiles(params *cli.CmdParams) error {
 	}
 
 	// Execute the organization logic with EnhancedOrganize
-	if err := params.DeskFS.EnhancedOrganize(params.DeskFS.InstanceConfig(), fileParams); err != nil {
+	if err := params.Filesystem.EnhancedOrganize(params.Filesystem.InstanceConfig(), fileParams); err != nil {
 		params.Interactor.StopSpinner(false, "Organization failed.")
 		params.Interactor.Error("Error organizing files", err)
 		return err

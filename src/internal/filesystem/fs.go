@@ -1,4 +1,4 @@
-package deskfs
+package filesystem
 
 import (
 	"context"
@@ -10,20 +10,20 @@ import (
 
 	"file4you/internal/config"
 	"file4you/internal/db"
-	"file4you/internal/deskfs/interfaces"
-	"file4you/internal/deskfs/options"
-	"file4you/internal/deskfs/services"
-	"file4you/internal/deskfs/types"
-	"file4you/internal/deskfs/utils"
-	"file4you/internal/filesystem/trees"
+	"file4you/internal/filesystem/interfaces"
+	"file4you/internal/filesystem/options"
+	"file4you/internal/filesystem/services"
+	"file4you/internal/filesystem/types"
+	"file4you/internal/filesystem/utils"
+	"file4you/internal/trees"
 	"file4you/internal/ui"
 
 	ignore "github.com/sabhiram/go-gitignore"
 )
 
-// DesktopFileSystem is the main filesystem manager for the file4you application.
+// FileSystem is the main filesystem manager for the file4you application.
 // It provides a modern, service-oriented interface for file organization and management.
-type DesktopFileSystem struct {
+type FileSystem struct {
 	// Core services
 	directoryService    interfaces.DirectoryService
 	fileOperations      interfaces.FileOperations
@@ -48,8 +48,8 @@ type DesktopFileSystem struct {
 	cacheDir string
 }
 
-// NewDesktopFileSystem creates a new modern filesystem manager
-func NewDesktopFileSystem(interactor ui.Interactor, centralDB db.ICentralDBProvider) (*DesktopFileSystem, error) {
+// New creates a new modern filesystem manager
+func New(interactor ui.Interactor, centralDB db.ICentralDBProvider) (*FileSystem, error) {
 	// Get system directories
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -88,7 +88,7 @@ func NewDesktopFileSystem(interactor ui.Interactor, centralDB db.ICentralDBProvi
 	directoryService := services.NewDirectoryManagerService(nil, centralDB.GetDirectoryTree())
 	organizationService := services.NewOrganizationService(conflictResolver, fileOperations, directoryService)
 
-	return &DesktopFileSystem{
+	return &FileSystem{
 		directoryService:    directoryService,
 		fileOperations:      fileOperations,
 		organizationService: organizationService,
@@ -110,7 +110,7 @@ func NewDesktopFileSystem(interactor ui.Interactor, centralDB db.ICentralDBProvi
 // High-level API methods
 
 // OrganizeDirectory organizes files in a directory using modern service architecture
-func (dfs *DesktopFileSystem) OrganizeDirectory(ctx context.Context, sourceDir, targetDir string, opts options.OrganizationOptions) (*types.OrganizationResult, error) {
+func (dfs *FileSystem) OrganizeDirectory(ctx context.Context, sourceDir, targetDir string, opts options.OrganizationOptions) (*types.OrganizationResult, error) {
 	start := time.Now()
 	slog.Info("Starting directory organization",
 		"source", sourceDir,
@@ -161,7 +161,7 @@ func (dfs *DesktopFileSystem) OrganizeDirectory(ctx context.Context, sourceDir, 
 }
 
 // PreviewOrganization generates a preview of organization operations
-func (dfs *DesktopFileSystem) PreviewOrganization(ctx context.Context, opts options.OrganizationOptions) (*types.OrganizationPreview, error) {
+func (dfs *FileSystem) PreviewOrganization(ctx context.Context, opts options.OrganizationOptions) (*types.OrganizationPreview, error) {
 	if opts.SourceDir == "" || opts.TargetDir == "" {
 		return nil, fmt.Errorf("source and target directories must be specified")
 	}
@@ -170,12 +170,12 @@ func (dfs *DesktopFileSystem) PreviewOrganization(ctx context.Context, opts opti
 }
 
 // ExecuteOrganization executes a previewed organization
-func (dfs *DesktopFileSystem) ExecuteOrganization(ctx context.Context, preview *types.OrganizationPreview, opts options.OrganizationOptions) error {
+func (dfs *FileSystem) ExecuteOrganization(ctx context.Context, preview *types.OrganizationPreview, opts options.OrganizationOptions) error {
 	return dfs.organizationService.ExecuteOrganization(ctx, preview, opts)
 }
 
 // IndexDirectory indexes a directory structure for fast operations
-func (dfs *DesktopFileSystem) IndexDirectory(ctx context.Context, rootPath string, opts options.IndexOptions) error {
+func (dfs *FileSystem) IndexDirectory(ctx context.Context, rootPath string, opts options.IndexOptions) error {
 	slog.Info("Starting directory indexing", "path", rootPath)
 
 	// Validate path
@@ -188,7 +188,7 @@ func (dfs *DesktopFileSystem) IndexDirectory(ctx context.Context, rootPath strin
 }
 
 // AnalyzeDirectory performs comprehensive directory analysis
-func (dfs *DesktopFileSystem) AnalyzeDirectory(ctx context.Context, rootPath string) (*types.DirectoryAnalysis, error) {
+func (dfs *FileSystem) AnalyzeDirectory(ctx context.Context, rootPath string) (*types.DirectoryAnalysis, error) {
 	slog.Info("Starting directory analysis", "path", rootPath)
 
 	return dfs.directoryService.AnalyzeDirectory(ctx, rootPath)
@@ -197,79 +197,79 @@ func (dfs *DesktopFileSystem) AnalyzeDirectory(ctx context.Context, rootPath str
 // File operation methods
 
 // CopyFile copies a single file with advanced options
-func (dfs *DesktopFileSystem) CopyFile(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
+func (dfs *FileSystem) CopyFile(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
 	return dfs.fileOperations.CopyFile(ctx, srcPath, dstPath, opts)
 }
 
 // MoveFile moves a single file with advanced options
-func (dfs *DesktopFileSystem) MoveFile(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
+func (dfs *FileSystem) MoveFile(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
 	return dfs.fileOperations.MoveFile(ctx, srcPath, dstPath, opts)
 }
 
 // DeleteFile deletes a single file
-func (dfs *DesktopFileSystem) DeleteFile(ctx context.Context, path string) error {
+func (dfs *FileSystem) DeleteFile(ctx context.Context, path string) error {
 	return dfs.fileOperations.DeleteFile(ctx, path)
 }
 
 // CopyDirectory copies a directory recursively
-func (dfs *DesktopFileSystem) CopyDirectory(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
+func (dfs *FileSystem) CopyDirectory(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
 	return dfs.fileOperations.CopyDirectory(ctx, srcPath, dstPath, opts)
 }
 
 // MoveDirectory moves a directory recursively
-func (dfs *DesktopFileSystem) MoveDirectory(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
+func (dfs *FileSystem) MoveDirectory(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
 	return dfs.fileOperations.MoveDirectory(ctx, srcPath, dstPath, opts)
 }
 
 // DeleteDirectory deletes a directory recursively
-func (dfs *DesktopFileSystem) DeleteDirectory(ctx context.Context, path string, recursive bool) error {
+func (dfs *FileSystem) DeleteDirectory(ctx context.Context, path string, recursive bool) error {
 	return dfs.fileOperations.DeleteDirectory(ctx, path, recursive)
 }
 
 // Conflict resolution methods
 
 // ResolveConflict resolves a file conflict using specified strategy
-func (dfs *DesktopFileSystem) ResolveConflict(ctx context.Context, srcPath, dstPath string, strategy options.ConflictStrategy) (string, error) {
+func (dfs *FileSystem) ResolveConflict(ctx context.Context, srcPath, dstPath string, strategy options.ConflictStrategy) (string, error) {
 	return dfs.conflictResolver.ResolveConflict(ctx, srcPath, dstPath, strategy)
 }
 
 // DetectConflict checks for conflicts between source and destination
-func (dfs *DesktopFileSystem) DetectConflict(ctx context.Context, srcPath, dstPath string) (*types.ConflictInfo, error) {
+func (dfs *FileSystem) DetectConflict(ctx context.Context, srcPath, dstPath string) (*types.ConflictInfo, error) {
 	return dfs.conflictResolver.DetectConflict(ctx, srcPath, dstPath)
 }
 
 // Git service methods for repository management
 
-func (dfs *DesktopFileSystem) IsGitRepo(dir string) bool {
+func (dfs *FileSystem) IsGitRepo(dir string) bool {
 	return dfs.gitService.IsRepository(dir)
 }
 
-func (dfs *DesktopFileSystem) InitGitRepo(dir string) error {
+func (dfs *FileSystem) InitGitRepo(dir string) error {
 	ctx := context.Background()
 	return dfs.gitService.InitRepository(ctx, dir)
 }
 
-func (dfs *DesktopFileSystem) GitRewind(dir string, stepsOrSha string) error {
+func (dfs *FileSystem) GitRewind(dir string, stepsOrSha string) error {
 	ctx := context.Background()
 	return dfs.gitService.Rewind(ctx, dir, stepsOrSha)
 }
 
-func (dfs *DesktopFileSystem) GitAddAndCommit(dir, message string) error {
+func (dfs *FileSystem) GitAddAndCommit(dir, message string) error {
 	ctx := context.Background()
 	return dfs.gitService.AddAndCommit(ctx, dir, message)
 }
 
-func (dfs *DesktopFileSystem) GitHasUncommittedChanges(dir string) (bool, error) {
+func (dfs *FileSystem) GitHasUncommittedChanges(dir string) (bool, error) {
 	ctx := context.Background()
 	return dfs.gitService.HasUncommittedChanges(ctx, dir)
 }
 
-func (dfs *DesktopFileSystem) GitStashCreate(dir, message string) error {
+func (dfs *FileSystem) GitStashCreate(dir, message string) error {
 	ctx := context.Background()
 	return dfs.gitService.StashCreate(ctx, dir, message)
 }
 
-func (dfs *DesktopFileSystem) GitStashPop(dir string, forceOverwrite bool) error {
+func (dfs *FileSystem) GitStashPop(dir string, forceOverwrite bool) error {
 	ctx := context.Background()
 	return dfs.gitService.StashPop(ctx, dir, forceOverwrite)
 }
@@ -277,27 +277,27 @@ func (dfs *DesktopFileSystem) GitStashPop(dir string, forceOverwrite bool) error
 // Utility methods
 
 // CalculateMaxDepth calculates the maximum depth of a directory tree
-func (dfs *DesktopFileSystem) CalculateMaxDepth(rootPath string) (int, error) {
+func (dfs *FileSystem) CalculateMaxDepth(rootPath string) (int, error) {
 	return dfs.depthUtils.CalculateMaxDepthInDirectory(rootPath)
 }
 
 // GetFileType determines the type of a file
-func (dfs *DesktopFileSystem) GetFileType(path string) string {
+func (dfs *FileSystem) GetFileType(path string) string {
 	return dfs.fileUtils.GetFileType(path)
 }
 
 // ValidatePath validates that a path is safe and accessible
-func (dfs *DesktopFileSystem) ValidatePath(path string) error {
+func (dfs *FileSystem) ValidatePath(path string) error {
 	return dfs.pathUtils.ValidatePath(path)
 }
 
 // GetDirectoryTree returns the current directory tree
-func (dfs *DesktopFileSystem) GetDirectoryTree() *trees.DirectoryTree {
+func (dfs *FileSystem) GetDirectoryTree() *trees.DirectoryTree {
 	return dfs.workspaceManager.centralDB.GetDirectoryTree()
 }
 
 // GetDesktopCleanerIgnore loads ignore patterns for file organization
-func (dfs *DesktopFileSystem) GetDesktopCleanerIgnore(dir string) (*ignore.GitIgnore, error) {
+func (dfs *FileSystem) GetDesktopCleanerIgnore(dir string) (*ignore.GitIgnore, error) {
 	ignorePath := filepath.Join(dir, ".file4you-ignore")
 
 	if _, err := os.Stat(ignorePath); err == nil {
@@ -316,56 +316,56 @@ func (dfs *DesktopFileSystem) GetDesktopCleanerIgnore(dir string) (*ignore.GitIg
 // Public API methods for CLI and external access
 
 // GetWorkspaceManager returns the workspace manager
-func (dfs *DesktopFileSystem) GetWorkspaceManager() *WorkspaceManager {
+func (dfs *FileSystem) GetWorkspaceManager() *WorkspaceManager {
 	return dfs.workspaceManager
 }
 
 // GetCwd returns the current working directory
-func (dfs *DesktopFileSystem) GetCwd() string {
+func (dfs *FileSystem) GetCwd() string {
 	return dfs.cwd
 }
 
 // GetConfig returns the configuration
-func (dfs *DesktopFileSystem) GetConfig() *config.File4YouConfig {
+func (dfs *FileSystem) GetConfig() *config.File4YouConfig {
 	return dfs.config
 }
 
 // GetGitService returns the git service for git operations
-func (dfs *DesktopFileSystem) GetGitService() interfaces.GitService {
+func (dfs *FileSystem) GetGitService() interfaces.GitService {
 	return dfs.gitService
 }
 
 // Service accessor methods
 
 // GetDirectoryService returns the directory service instance
-func (dfs *DesktopFileSystem) GetDirectoryService() interfaces.DirectoryService {
+func (dfs *FileSystem) GetDirectoryService() interfaces.DirectoryService {
 	return dfs.directoryService
 }
 
 // GetFileOperations returns the file operations service instance
-func (dfs *DesktopFileSystem) GetFileOperations() interfaces.FileOperations {
+func (dfs *FileSystem) GetFileOperations() interfaces.FileOperations {
 	return dfs.fileOperations
 }
 
 // GetOrganizationService returns the organization service instance
-func (dfs *DesktopFileSystem) GetOrganizationService() interfaces.OrganizationService {
+func (dfs *FileSystem) GetOrganizationService() interfaces.OrganizationService {
 	return dfs.organizationService
 }
 
 // GetConflictResolver returns the conflict resolver service instance
-func (dfs *DesktopFileSystem) GetConflictResolver() interfaces.ConflictResolver {
+func (dfs *FileSystem) GetConflictResolver() interfaces.ConflictResolver {
 	return dfs.conflictResolver
 }
 
 // OrganizeWithOptions organizes files using the new options system
-func (dfs *DesktopFileSystem) OrganizeWithOptions(ctx context.Context, opts options.OrganizationOptions) error {
+func (dfs *FileSystem) OrganizeWithOptions(ctx context.Context, opts options.OrganizationOptions) error {
 	return dfs.organizationService.OrganizeFiles(ctx, opts)
 }
 
 // Legacy compatibility methods - TODO: Remove after CLI migration
 
 // EnhancedOrganize provides legacy compatibility for the CLI organizer
-func (dfs *DesktopFileSystem) EnhancedOrganize(cfg *config.File4YouConfig, params *options.FilePathParams) error {
+func (dfs *FileSystem) EnhancedOrganize(cfg *config.File4YouConfig, params *options.FilePathParams) error {
 	ctx := context.Background()
 	opts := params.ToOrganizationOptions()
 	opts.Config = cfg
@@ -373,6 +373,6 @@ func (dfs *DesktopFileSystem) EnhancedOrganize(cfg *config.File4YouConfig, param
 }
 
 // InstanceConfig returns the instance configuration for legacy compatibility
-func (dfs *DesktopFileSystem) InstanceConfig() *config.File4YouConfig {
+func (dfs *FileSystem) InstanceConfig() *config.File4YouConfig {
 	return dfs.config
 }

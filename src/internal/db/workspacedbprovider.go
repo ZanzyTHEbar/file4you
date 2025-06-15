@@ -3,7 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
-	"file4you/internal/filesystem/trees"
+	"file4you/internal/trees"
 	"fmt"
 	"path/filepath"
 

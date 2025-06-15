@@ -1,7 +1,7 @@
 package types
 
 import (
-	"file4you/internal/filesystem/trees"
+	"file4you/internal/trees"
 	"time"
 )
 

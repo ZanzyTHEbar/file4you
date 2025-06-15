@@ -2,7 +2,7 @@ package db
 
 import (
 	"encoding/json"
-	"file4you/internal/filesystem/trees"
+	"file4you/internal/trees"
 	"fmt"
 	"time"
 

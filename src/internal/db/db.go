@@ -55,7 +55,7 @@ type OperationHistory struct {
 //	defer workspaceDB.Close()
 //
 //	// Example operation in workspace database
-//	err = workspaceDB.AddFileMetadata("/path/to/file", deskfs.Metadata{})
+//	err = workspaceDB.AddFileMetadata("/path/to/file", filesystem.Metadata{})
 //	if err != nil {
 //		log.Fatal("Failed to add file metadata:", err)
 //	}

@@ -77,11 +77,11 @@ func NewRoot(params *CmdParams) *cobra.Command {
 			return
 		}
 
-		// Configuration is now handled during DesktopFileSystem initialization
-		// The rest of the Genkit initialization seems okay, assuming DeskFS and CentralDB are correctly initialized.
+		// Configuration is now handled during FileSystem initialization
+		// The rest of the Genkit initialization seems okay, assuming filesystem and CentralDB are correctly initialized.
 		params.Interactor.Output("Initializing Genkit...")
-		if params.DeskFS == nil {
-			params.Interactor.Fatal("DeskFS not initialized, cannot initialize Genkit", nil)
+		if params.Filesystem == nil {
+			params.Interactor.Fatal("filesystem not initialized, cannot initialize Genkit", nil)
 			return
 		}
 		if params.CentralDB == nil {
@@ -97,7 +97,7 @@ func NewRoot(params *CmdParams) *cobra.Command {
 			params.Interactor.Info("CentralDB already initialized, proceeding with Genkit initialization.")
 		}
 
-		//service, err := genkithandler.NewService(context.Background(), params.DeskFS, params.CentralDB)
+		//service, err := genkithandler.NewService(context.Background(), params.Filesystem, params.CentralDB)
 		//if err != nil {
 		//	params.Interactor.Fatal("Failed to initialize Genkit", err)
 		//	return

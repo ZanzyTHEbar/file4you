@@ -2,7 +2,7 @@ package cli
 
 import (
 	"file4you/internal/db"
-	"file4you/internal/deskfs"
+	"file4you/internal/filesystem"
 	"file4you/internal/ui"
 
 	"github.com/firebase/genkit/go/genkit"
@@ -11,7 +11,7 @@ import (
 
 type CmdParams struct {
 	Interactor ui.Interactor // New field
-	DeskFS     *deskfs.DesktopFileSystem
+	Filesystem     *filesystem.FileSystem
 	Palette    []*cobra.Command
 	CentralDB  *db.CentralDBProvider
 	Genkit     *genkit.Genkit

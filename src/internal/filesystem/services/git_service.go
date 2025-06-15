@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"file4you/internal/deskfs/interfaces"
+	"file4you/internal/filesystem/interfaces"
 )
 
 // Constants for detecting stash conflict messages

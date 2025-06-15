@@ -4,7 +4,7 @@ import (
 	"file4you/internal/cli"
 	"file4you/internal/config"
 	"file4you/internal/db"
-	"file4you/internal/deskfs"
+	"file4you/internal/filesystem"
 	"file4you/internal/terminal"
 	"fmt"
 	"os"
@@ -28,13 +28,13 @@ func main() {
 	}
 	defer centralDB.Close()
 
-	deskFS, err := deskfs.NewDesktopFileSystem(interactor, centralDB)
+	fs, err := filesystem.New(interactor, centralDB)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize desktop file system")
 	}
 
 	cmdParams := &cli.CmdParams{
-		DeskFS:     deskFS,
+		Filesystem:     fs,
 		Interactor: interactor,
 		CentralDB:  centralDB,
 	}

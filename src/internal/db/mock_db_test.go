@@ -2,7 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"file4you/internal/filesystem/trees" // Added this import
+	"file4you/internal/trees" // Added this import
 	"reflect"
 	"testing"
 	"time"

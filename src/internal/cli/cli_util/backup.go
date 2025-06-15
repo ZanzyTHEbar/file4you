@@ -91,8 +91,8 @@ Targets can be:
 			params.Interactor.StopSpinner(true, "Genkit backup flow completed successfully.")
 			params.Interactor.Success(fmt.Sprintf("Genkit backup flow for target '%s' finished.", target))
 			//params.Interactor.Output(fmt.Sprintf("Flow Result: %s", backupOutput.Message))
-			//if backupOutput.DeskFSBackupPath != "" {
-			//	params.Interactor.Output(fmt.Sprintf("DeskFS Backup Path: %s", backupOutput.DeskFSBackupPath))
+			//if backupOutput.filesystemBackupPath != "" {
+			//	params.Interactor.Output(fmt.Sprintf("filesystem Backup Path: %s", backupOutput.filesystemBackupPath))
 			//}
 			//if backupOutput.CentralDBBackupPath != "" {
 			//	params.Interactor.Output(fmt.Sprintf("CentralDB Backup Path: %s", backupOutput.CentralDBBackupPath))

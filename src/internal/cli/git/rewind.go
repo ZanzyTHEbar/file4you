@@ -52,7 +52,7 @@ func rewind(params *cli.CmdParams, args []string) error {
 	params.Interactor.StartSpinner(fmt.Sprintf("Rewinding to %s ...", stepsOrSha))
 
 	// Rewind to the target sha
-	if err := params.DeskFS.GitRewind(params.DeskFS.GetCwd(), stepsOrSha); err != nil {
+	if err := params.Filesystem.GitRewind(params.Filesystem.GetCwd(), stepsOrSha); err != nil {
 		params.Interactor.StopSpinner(false, "Rewind failed.")
 		params.Interactor.Error(fmt.Sprintf("Error rewinding to %s", stepsOrSha), err)
 		return err
