@@ -173,9 +173,6 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 		return result
 	}
 
-	// Debug: Log directory reading results
-	slog.Info(fmt.Sprintf("DEBUG: Read directory %s, found %d entries", dirNode.Path, len(entries)))
-
 	// Get ignore patterns
 	ignored, err := handler.GetDesktopCleanerIgnore(dirNode.Path)
 	if err != nil {
@@ -211,9 +208,6 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 				continue
 			}
 
-			// Debug: Log file processing
-			slog.Info(fmt.Sprintf("DEBUG: Processing file %s", entry.Name()))
-
 			childFile := &trees.FileNode{
 				Path:      childPath,
 				Name:      entry.Name(),
@@ -232,10 +226,6 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 
 	result.Children = children
 	result.Files = files
-
-	// Debug: Log final results
-	slog.Info(fmt.Sprintf("DEBUG: Processed directory %s - found %d children, %d files", dirNode.Path, len(children), len(files)))
-
 	return result
 }
 

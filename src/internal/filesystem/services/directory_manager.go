@@ -502,6 +502,95 @@ func (h *analysisHandler) HandleFile(node *trees.FileNode) error {
 	return nil
 }
 
+// combinedHandler handles both analysis and tree building in one pass
+type combinedHandler struct {
+	analysis      *types.DirectoryAnalysis
+	rootPath      string
+	filter        func(*trees.FileNode) bool
+	includeHidden bool
+	mu            sync.Mutex
+}
+
+func (h *combinedHandler) HandleDirectory(node *trees.DirectoryNode) error {
+	// Apply directory filtering (skip hidden if needed)
+	dirName := filepath.Base(node.Path)
+	if !h.includeHidden && strings.HasPrefix(dirName, ".") {
+		return fmt.Errorf("skip hidden directory: %s", dirName)
+	}
+
+	// Update analysis
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.analysis.TotalDirectories++
+
+	// Calculate depth from root path
+	relPath, _ := filepath.Rel(h.rootPath, node.Path)
+	depth := strings.Count(relPath, string(os.PathSeparator))
+	if depth > h.analysis.MaxDepth {
+		h.analysis.MaxDepth = depth
+	}
+
+	return nil
+}
+
+func (h *combinedHandler) HandleFile(node *trees.FileNode) error {
+	// Apply file filtering (skip hidden if needed)
+	if !h.includeHidden && strings.HasPrefix(node.Name, ".") {
+		return nil // Skip hidden files silently
+	}
+
+	if h.filter != nil && !h.filter(node) {
+		return nil // Skip filtered files silently
+	}
+
+	// Update analysis
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.analysis.TotalFiles++
+	h.analysis.TotalSize += node.Metadata.Size
+
+	// File type analysis
+	ext := strings.ToLower(filepath.Ext(node.Name))
+	if ext == "" {
+		ext = "no_extension"
+	}
+	h.analysis.FileTypes[ext]++
+
+	// Size distribution
+	var sizeCategory string
+	switch {
+	case node.Metadata.Size < 1024:
+		sizeCategory = "small_1kb"
+	case node.Metadata.Size < 1024*1024:
+		sizeCategory = "medium_1mb"
+	case node.Metadata.Size < 1024*1024*100:
+		sizeCategory = "large_100mb"
+	default:
+		sizeCategory = "huge_100mb_plus"
+	}
+	h.analysis.SizeDistribution[sizeCategory]++
+
+	// Age distribution (simple example)
+	modTime := node.Metadata.Modified
+	if !modTime.IsZero() {
+		ageDays := int(time.Since(modTime).Hours() / 24)
+		var ageCategory string
+		switch {
+		case ageDays < 7:
+			ageCategory = "recent_week"
+		case ageDays < 30:
+			ageCategory = "recent_month"
+		case ageDays < 365:
+			ageCategory = "recent_year"
+		default:
+			ageCategory = "old_year_plus"
+		}
+		h.analysis.AgeDistribution[ageCategory]++
+	}
+
+	return nil
+}
+
 // handlerAdapter adapts our handlers to the ConcurrentTraverser interface
 type handlerAdapter struct {
 	original traversalHandlerAdapter
