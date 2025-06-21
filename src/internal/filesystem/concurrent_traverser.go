@@ -87,7 +87,7 @@ func (ct *ConcurrentTraverser) TraverseDirectory(rootPath string, recursive bool
 	// Process directories level by level using a BFS approach with conc.Pool
 	currentLevel := []*trees.DirectoryNode{rootNode}
 
-	for depth := 0; depth <= maxDepth && len(currentLevel) > 0; depth++ {
+	for depth := 0; (maxDepth == -1 || depth <= maxDepth) && len(currentLevel) > 0; depth++ {
 		if !recursive && depth > 0 {
 			break
 		}
@@ -111,7 +111,7 @@ func (ct *ConcurrentTraverser) TraverseDirectory(rootPath string, recursive bool
 				}
 
 				// Add child directories to next level if within depth limits
-				if recursive && depth < maxDepth && result.Error == nil {
+				if recursive && (maxDepth == -1 || depth < maxDepth) && result.Error == nil {
 					nextLevelMu.Lock()
 					nextLevel = append(nextLevel, result.Children...)
 					nextLevelMu.Unlock()
@@ -147,8 +147,8 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 	default:
 	}
 
-	// Check depth limits
-	if depth > maxDepth {
+	// Check depth limits (-1 means unlimited)
+	if maxDepth != -1 && depth > maxDepth {
 		slog.Debug(fmt.Sprintf("Max depth %d reached at %s", maxDepth, dirNode.Path))
 		return result
 	}
@@ -173,6 +173,9 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 		return result
 	}
 
+	// Debug: Log directory reading results
+	slog.Info(fmt.Sprintf("DEBUG: Read directory %s, found %d entries", dirNode.Path, len(entries)))
+
 	// Get ignore patterns
 	ignored, err := handler.GetDesktopCleanerIgnore(dirNode.Path)
 	if err != nil {
@@ -196,12 +199,20 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 			childDir := trees.NewDirectoryNode(childPath, dirNode)
 			children = append(children, childDir)
 			dirNode.Children = append(dirNode.Children, childDir)
+
+			// Call handler for directory
+			if err := handler.HandleDirectory(childDir); err != nil {
+				slog.Warn(fmt.Sprintf("Handler error for directory %s: %v", childPath, err))
+			}
 		} else {
 			entryInfo, err := entry.Info()
 			if err != nil {
 				slog.Warn(fmt.Sprintf("Error getting file info for %s: %v", entry.Name(), err))
 				continue
 			}
+
+			// Debug: Log file processing
+			slog.Info(fmt.Sprintf("DEBUG: Processing file %s", entry.Name()))
 
 			childFile := &trees.FileNode{
 				Path:      childPath,
@@ -211,11 +222,20 @@ func (ct *ConcurrentTraverser) processDirectoryNode(ctx context.Context, dirNode
 			}
 			files = append(files, childFile)
 			dirNode.AddFile(childFile)
+
+			// Call handler for file
+			if err := handler.HandleFile(childFile); err != nil {
+				slog.Warn(fmt.Sprintf("Handler error for file %s: %v", childPath, err))
+			}
 		}
 	}
 
 	result.Children = children
 	result.Files = files
+
+	// Debug: Log final results
+	slog.Info(fmt.Sprintf("DEBUG: Processed directory %s - found %d children, %d files", dirNode.Path, len(children), len(files)))
+
 	return result
 }
 

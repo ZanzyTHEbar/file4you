@@ -35,6 +35,8 @@ type ConcurrentTraverser interface {
 // TraversalHandler defines the interface for handling traversal callbacks (legacy)
 type TraversalHandler interface {
 	GetDesktopCleanerIgnore(dir string) (IgnoreChecker, error)
+	HandleDirectory(node *trees.DirectoryNode) error
+	HandleFile(node *trees.FileNode) error
 }
 
 // IgnoreChecker interface for file ignore patterns
@@ -516,6 +518,14 @@ type traversalHandlerAdapter interface {
 func (h *handlerAdapter) GetDesktopCleanerIgnore(dir string) (IgnoreChecker, error) {
 	// TODO: Return a null ignore checker for now - can be enhanced later
 	return &nullIgnoreChecker{}, nil
+}
+
+func (h *handlerAdapter) HandleDirectory(node *trees.DirectoryNode) error {
+	return h.original.HandleDirectory(node)
+}
+
+func (h *handlerAdapter) HandleFile(node *trees.FileNode) error {
+	return h.original.HandleFile(node)
 }
 
 type nullIgnoreChecker struct{}

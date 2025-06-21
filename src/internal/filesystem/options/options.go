@@ -167,7 +167,7 @@ func DefaultMoveOptions() MoveOptions {
 func DefaultTraversalOptions() TraversalOptions {
 	return TraversalOptions{
 		Recursive:      true,
-		MaxDepth:       0, // Unlimited
+		MaxDepth:       -1, // Unlimited (changed from 0 to -1)
 		FollowSymlinks: false,
 		IncludeHidden:  false,
 		SortBy: SortCriteria{

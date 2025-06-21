@@ -129,6 +129,9 @@ func (ors *OrganizationService) OrganizeDirectory(ctx context.Context, sourcePat
 
 // processDirectoryTree recursively processes the directory tree for organization
 func (ors *OrganizationService) processDirectoryTree(ctx context.Context, node *trees.DirectoryNode, targetBase string, opts options.OrganizationOptions, result *types.OrganizationResult) error {
+	// Debug: Log directory processing
+	slog.Info(fmt.Sprintf("DEBUG: Processing directory %s with %d files, %d children", node.Path, len(node.Files), len(node.Children)))
+
 	// Create worker pool for concurrent file processing
 	semaphore := make(chan struct{}, opts.WorkerCount)
 	var wg sync.WaitGroup
@@ -298,10 +301,14 @@ func (ors *OrganizationService) categorizeWithAI(ctx context.Context, file *tree
 func (ors *OrganizationService) categorizeByRules(file *trees.FileNode, rules map[string][]string) (string, error) {
 	ext := strings.ToLower(file.Extension)
 
+	// Debug: Log categorization attempt
+	slog.Info(fmt.Sprintf("DEBUG: Categorizing file %s with extension '%s'", file.Name, ext))
+
 	// Check custom rules first
 	for category, extensions := range rules {
 		for _, ruleExt := range extensions {
 			if ext == strings.ToLower(ruleExt) {
+				slog.Info(fmt.Sprintf("DEBUG: File %s matched custom rule: %s", file.Name, category))
 				return category, nil
 			}
 		}
@@ -326,8 +333,10 @@ func (ors *OrganizationService) categorizeByRules(file *trees.FileNode, rules ma
 	case ".exe", ".msi", ".dmg", ".pkg", ".deb", ".rpm":
 		return "Applications", nil
 	case ".js", ".html", ".css", ".py", ".go", ".java", ".cpp", ".c":
+		slog.Info(fmt.Sprintf("DEBUG: File %s categorized as Code", file.Name))
 		return "Code", nil
 	default:
+		slog.Info(fmt.Sprintf("DEBUG: File %s categorized as Other", file.Name))
 		return "Other", nil
 	}
 }
