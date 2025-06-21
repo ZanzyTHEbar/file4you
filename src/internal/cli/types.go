@@ -11,7 +11,7 @@ import (
 
 type CmdParams struct {
 	Interactor ui.Interactor // New field
-	Filesystem     *filesystem.FileSystem
+	Filesystem *filesystem.FileSystem
 	Palette    []*cobra.Command
 	CentralDB  *db.CentralDBProvider
 	Genkit     *genkit.Genkit

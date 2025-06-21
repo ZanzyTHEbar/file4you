@@ -85,6 +85,101 @@ func (w *WorkspaceDB) SetHistory([]string) error {
 	return err
 }
 
+// Connect implements WorkspaceDBProvider.Connect
+func (w *WorkspaceDB) Connect(dsn string) (*sql.DB, error) {
+	var err error
+	w.db, err = ConnectToDB(dsn)
+	return w.db, err
+}
+
+// InitSchema implements WorkspaceDBProvider.InitSchema
+func (w *WorkspaceDB) InitSchema() error {
+	return w.init()
+}
+
+// InsertFileMetadata implements WorkspaceDBProvider.InsertFileMetadata
+func (w *WorkspaceDB) InsertFileMetadata(meta *trees.FileMetadata) error {
+	metadataJSON, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	fileID := uuid.New().String()
+	_, err = w.db.Exec("INSERT INTO files (id, workspace_id, path, metadata) VALUES (?, ?, ?, ?)",
+		fileID, "", meta.FilePath, metadataJSON)
+	if err != nil {
+		return fmt.Errorf("failed to insert file metadata: %w", err)
+	}
+	return nil
+}
+
+// GetFileMetadata implements WorkspaceDBProvider.GetFileMetadata
+func (w *WorkspaceDB) GetFileMetadata(filePath string) (*trees.FileMetadata, error) {
+	var metadataJSON []byte
+	err := w.db.QueryRow("SELECT metadata FROM files WHERE path = ?", filePath).Scan(&metadataJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file metadata: %w", err)
+	}
+
+	var metadata trees.FileMetadata
+	err = json.Unmarshal(metadataJSON, &metadata)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+	}
+	return &metadata, nil
+}
+
+// GetAllFileMetadata implements WorkspaceDBProvider.GetAllFileMetadata
+func (w *WorkspaceDB) GetAllFileMetadata() ([]*trees.FileMetadata, error) {
+	rows, err := w.db.Query("SELECT metadata FROM files")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query file metadata: %w", err)
+	}
+	defer rows.Close()
+
+	var metadataList []*trees.FileMetadata
+	for rows.Next() {
+		var metadataJSON []byte
+		if err := rows.Scan(&metadataJSON); err != nil {
+			return nil, fmt.Errorf("failed to scan metadata: %w", err)
+		}
+
+		var metadata trees.FileMetadata
+		if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		}
+		metadataList = append(metadataList, &metadata)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+	return metadataList, nil
+}
+
+// DeleteFileMetadata implements WorkspaceDBProvider.DeleteFileMetadata
+func (w *WorkspaceDB) DeleteFileMetadata(filePath string) error {
+	_, err := w.db.Exec("DELETE FROM files WHERE path = ?", filePath)
+	if err != nil {
+		return fmt.Errorf("failed to delete file metadata: %w", err)
+	}
+	return nil
+}
+
+// UpdateFileMetadata implements WorkspaceDBProvider.UpdateFileMetadata
+func (w *WorkspaceDB) UpdateFileMetadata(meta *trees.FileMetadata) error {
+	metadataJSON, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	_, err = w.db.Exec("UPDATE files SET metadata = ? WHERE path = ?", metadataJSON, meta.FilePath)
+	if err != nil {
+		return fmt.Errorf("failed to update file metadata: %w", err)
+	}
+	return nil
+}
+
 // Utility function to load a workspace database by ID.
 func LoadWorkspaceDBProvider(central *CentralDBProvider, workspaceID uuid.UUID) (*WorkspaceDB, error) {
 	rootPath, err := central.GetWorkspacePath(workspaceID)
@@ -223,3 +318,6 @@ type HistoryEvent struct {
 	EventType string
 	EventJSON string
 }
+
+// Ensure WorkspaceDB implements WorkspaceDBProvider interface
+var _ WorkspaceDBProvider = (*WorkspaceDB)(nil)

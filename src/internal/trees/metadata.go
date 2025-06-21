@@ -3,6 +3,10 @@ package trees
 import (
 	"fmt"
 	"os"
+	"os/user"
+	"path/filepath"
+	"strconv"
+	"syscall"
 	"time"
 
 	"gonum.org/v1/gonum/spatial/kdtree"
@@ -34,10 +38,12 @@ func NewMetadata(fileinfo os.FileInfo) Metadata {
 	// For Linux, creation time is not typically available. Use zero time or alternative method if needed.
 	createdAt := time.Time{}
 
-	// Set NodeType to "file" or "directory"
-	nodeType := "file"
+	// Set NodeType based on file type
+	var nodeType NodeType
 	if fileinfo.IsDir() {
-		nodeType = "directory"
+		nodeType = Directory
+	} else {
+		nodeType = File
 	}
 
 	// Create metadata struct
@@ -45,9 +51,9 @@ func NewMetadata(fileinfo os.FileInfo) Metadata {
 		Size:        fileinfo.Size(),
 		ModifiedAt:  modifiedAt,
 		CreatedAt:   createdAt,
-		NodeType:    StringToNodeType(nodeType),
+		NodeType:    nodeType,
 		Permissions: permissions,
-		Owner:       "unknown", // TODO: Implement owner retrieval for Linux if necessary
+		Owner:       getFileOwner(fileinfo), // Implement owner retrieval for Linux
 		Tags:        []string{},
 	}
 }
@@ -99,8 +105,12 @@ func AddMetadataToTree(node *DirectoryNode) error {
 	if err != nil {
 		return err
 	}
-	// Add tags to metadata
-	AddTagsToMetadata(&metadata)
+	// Add tags to metadata with filename-aware tagging
+	dirName := filepath.Base(node.Path)
+	err = AddTagsToMetadataWithFilename(&metadata, dirName)
+	if err != nil {
+		return err
+	}
 	node.Metadata = metadata
 
 	// Add metadata to all files within the directory
@@ -109,8 +119,12 @@ func AddMetadataToTree(node *DirectoryNode) error {
 		if err != nil {
 			return err
 		}
-		// Add tags to file metadata
-		AddTagsToMetadata(&fileMetadata)
+		// Add enhanced tags to file metadata with filename
+		fileName := filepath.Base(fileNode.Path)
+		err = AddTagsToMetadataWithFilename(&fileMetadata, fileName)
+		if err != nil {
+			return err
+		}
 		fileNode.Metadata = fileMetadata
 	}
 
@@ -179,4 +193,19 @@ func StringToNodeType(s string) NodeType {
 	default:
 		return -1
 	}
+}
+
+// getFileOwner retrieves the owner name for a file on Unix-like systems
+func getFileOwner(fileinfo os.FileInfo) string {
+	// Try to get the owner name from file system info
+	if stat, ok := fileinfo.Sys().(*syscall.Stat_t); ok {
+		if u, err := user.LookupId(strconv.Itoa(int(stat.Uid))); err == nil {
+			return u.Username
+		}
+		// If lookup fails, return the UID as a string
+		return strconv.Itoa(int(stat.Uid))
+	}
+
+	// Fallback if we can't get system info
+	return "unknown"
 }

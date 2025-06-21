@@ -32,7 +32,7 @@ type ConcurrentTraverser interface {
 	Cleanup()
 }
 
-// TraversalHandler defines the interface for handling traversal callbacks
+// TraversalHandler defines the interface for handling traversal callbacks (legacy)
 type TraversalHandler interface {
 	GetDesktopCleanerIgnore(dir string) (IgnoreChecker, error)
 }

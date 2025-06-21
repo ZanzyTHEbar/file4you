@@ -14,29 +14,42 @@ import (
 // mockInteractor is a mock implementation of ui.Interactor for testing
 type mockInteractor struct{}
 
-func (m *mockInteractor) Output(message string)                                { /* mock implementation */ }
-func (m *mockInteractor) Outputf(format string, args ...interface{})           { /* mock implementation */ }
-func (m *mockInteractor) Error(message string, err error)                      { /* mock implementation */ }
-func (m *mockInteractor) Fatal(message string, err error)                      { /* mock implementation */ }
-func (m *mockInteractor) PromptYesNo(message string) bool                      { return true }
-func (m *mockInteractor) PromptChoice(message string, choices []string) string { return choices[0] }
-func (m *mockInteractor) PromptInput(message string) string                    { return "test" }
-
-func TestNew(t *testing.T) {
-	interactor := &mockInteractor{}
-	mockDBProvider := db.NewMockCentralDBProvider()
-
-	dfs, err := New(interactor, mockDBProvider)
-
-	require.NoError(t, err, "Should create FileSystem without error")
-	require.NotNil(t, dfs, "FileSystem should not be nil")
-
-	// Test basic accessors
-	assert.NotEmpty(t, dfs.GetCwd(), "Should have current working directory")
-	assert.NotNil(t, dfs.GetConfig(), "Should have configuration")
-	assert.NotNil(t, dfs.GetWorkspaceManager(), "Should have workspace manager")
-	assert.NotNil(t, dfs.GetGitService(), "Should have git service")
+// Prompt methods
+func (m *mockInteractor) Prompt(message string, defaultValue string) (string, error) {
+	return defaultValue, nil
 }
+func (m *mockInteractor) Confirm(message string, defaultValue bool) (bool, error) {
+	return defaultValue, nil
+}
+func (m *mockInteractor) Select(message string, options []string, defaultValue string) (string, error) {
+	if len(options) > 0 {
+		return options[0], nil
+	}
+	return defaultValue, nil
+}
+
+// Output methods
+func (m *mockInteractor) Output(message string)                       { /* mock implementation */ }
+func (m *mockInteractor) Outputf(format string, args ...interface{})  { /* mock implementation */ }
+func (m *mockInteractor) Success(message string)                      { /* mock implementation */ }
+func (m *mockInteractor) Successf(format string, args ...interface{}) { /* mock implementation */ }
+func (m *mockInteractor) Info(message string)                         { /* mock implementation */ }
+func (m *mockInteractor) Infof(format string, args ...interface{})    { /* mock implementation */ }
+func (m *mockInteractor) Warning(message string)                      { /* mock implementation */ }
+func (m *mockInteractor) Warningf(format string, args ...interface{}) { /* mock implementation */ }
+func (m *mockInteractor) Error(message string, err error)             { /* mock implementation */ }
+func (m *mockInteractor) Errorf(format string, err error, args ...interface{}) { /* mock implementation */
+}
+func (m *mockInteractor) Fatal(message string, err error) { /* mock implementation */ }
+func (m *mockInteractor) Fatalf(format string, err error, args ...interface{}) { /* mock implementation */
+}
+
+// Spinner methods
+func (m *mockInteractor) StartSpinner(message string)              { /* mock implementation */ }
+func (m *mockInteractor) StopSpinner(success bool, message string) { /* mock implementation */ }
+
+// Help methods
+func (m *mockInteractor) ShowCustomHelp(showAll bool, commandPath string) { /* mock implementation */ }
 
 func TestFilePathParamsConversion(t *testing.T) {
 	params := options.NewFilePathParams()

@@ -80,12 +80,17 @@ func New(interactor ui.Interactor, centralDB db.ICentralDBProvider) (*FileSystem
 	// Create workspace manager
 	workspaceManager := NewWorkspaceManager(centralDB, nil) // TODO: Add assert handler
 
+	// Create context for concurrent operations
+	ctx := context.Background()
+
+	// Create concurrent traverser for high-performance directory operations
+	traverser := NewConcurrentTraverser(ctx)
+
 	// Create services in correct order
 	conflictResolver := services.NewConflictResolverService()
 	fileOperations := services.NewFileOperationsService(conflictResolver, cacheDir)
 	gitService := services.NewGitService()
-	// For now, pass nil for ConcurrentTraverser - will be implemented later
-	directoryService := services.NewDirectoryManagerService(nil, centralDB.GetDirectoryTree())
+	directoryService := services.NewDirectoryManagerService(traverser, centralDB.GetDirectoryTree())
 	organizationService := services.NewOrganizationService(conflictResolver, fileOperations, directoryService)
 
 	return &FileSystem{
@@ -297,7 +302,7 @@ func (dfs *FileSystem) GetDirectoryTree() *trees.DirectoryTree {
 }
 
 // GetDesktopCleanerIgnore loads ignore patterns for file organization
-func (dfs *FileSystem) GetDesktopCleanerIgnore(dir string) (*ignore.GitIgnore, error) {
+func (dfs *FileSystem) GetDesktopCleanerIgnore(dir string) (services.IgnoreChecker, error) {
 	ignorePath := filepath.Join(dir, ".file4you-ignore")
 
 	if _, err := os.Stat(ignorePath); err == nil {
