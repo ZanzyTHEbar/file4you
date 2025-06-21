@@ -222,6 +222,45 @@ func (dm *DirectoryManagerService) AnalyzeDirectory(ctx context.Context, rootPat
 	return analysis, nil
 }
 
+// BuildDirectoryTreeWithAnalysis creates a directory tree structure and performs analysis in one pass
+func (dm *DirectoryManagerService) BuildDirectoryTreeWithAnalysis(ctx context.Context, rootPath string, opts options.TraversalOptions) (*trees.DirectoryNode, *types.DirectoryAnalysis, error) {
+	start := time.Now()
+	defer func() {
+		dm.updateMetrics(start)
+	}()
+
+	// Create combined handler that does both analysis and tree building
+	handler := &combinedHandler{
+		analysis: &types.DirectoryAnalysis{
+			FileTypes:        make(map[string]int),
+			SizeDistribution: make(map[string]int),
+			AgeDistribution:  make(map[string]int),
+		},
+		rootPath:      rootPath,
+		filter:        opts.Filter,
+		includeHidden: opts.IncludeHidden,
+	}
+
+	node, err := dm.buildDirectoryTreeWithOptions(ctx, rootPath, opts, handler)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build directory tree with analysis: %w", err)
+	}
+
+	// Finalize analysis
+	analysis := handler.analysis
+	analysis.Duration = time.Since(start)
+	analysis.MaxDepth = dm.calculateNodeDepth(node, 0)
+
+	slog.Info("Directory tree built with analysis",
+		"path", rootPath,
+		"files", analysis.TotalFiles,
+		"directories", analysis.TotalDirectories,
+		"size", analysis.TotalSize,
+		"duration", analysis.Duration)
+
+	return node, analysis, nil
+}
+
 // buildDirectoryTreeWithOptions is the core method that uses concurrent traversal
 func (dm *DirectoryManagerService) buildDirectoryTreeWithOptions(ctx context.Context, rootPath string, opts options.TraversalOptions, handler traversalHandlerAdapter) (*trees.DirectoryNode, error) {
 	// Convert our handler to the interface expected by ConcurrentTraverser
@@ -571,7 +610,7 @@ func (h *combinedHandler) HandleFile(node *trees.FileNode) error {
 	h.analysis.SizeDistribution[sizeCategory]++
 
 	// Age distribution (simple example)
-	modTime := node.Metadata.Modified
+	modTime := node.Metadata.ModifiedAt
 	if !modTime.IsZero() {
 		ageDays := int(time.Since(modTime).Hours() / 24)
 		var ageCategory string

@@ -27,6 +27,7 @@ type DirectoryService interface {
 	// Index and build directory structures
 	IndexDirectory(ctx context.Context, rootPath string, opts options.IndexOptions) error
 	BuildDirectoryTree(ctx context.Context, rootPath string, opts options.TraversalOptions) (*trees.DirectoryNode, error)
+	BuildDirectoryTreeWithAnalysis(ctx context.Context, rootPath string, opts options.TraversalOptions) (*trees.DirectoryNode, *types.DirectoryAnalysis, error)
 
 	// Directory analysis
 	CalculateMaxDepth(ctx context.Context, rootPath string) (int, error)

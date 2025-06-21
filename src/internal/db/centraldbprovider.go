@@ -112,7 +112,7 @@ func (c *CentralDBProvider) AddWorkspace(rootPath, config string) (*Workspace, e
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	slog.Debug(fmt.Sprintf("Successfully created Workspace"))
+	slog.Debug("Successfully created Workspace", "id", workspace.ID, "root_path", workspace.RootPath)
 
 	return &workspace, nil
 }

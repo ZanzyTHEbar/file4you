@@ -73,15 +73,7 @@ func (ors *OrganizationService) OrganizeDirectory(ctx context.Context, sourcePat
 		},
 	})
 
-	// Analyze source directory structure
-	analysis, err := ors.directoryMgr.AnalyzeDirectory(ctx, sourcePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to analyze source directory: %w", err)
-	}
-
-	result.SourceAnalysis = analysis
-
-	// Get directory tree for traversal
+	// Analyze source directory and build tree in one pass
 	traversalOpts := options.TraversalOptions{
 		Recursive:     true,
 		MaxDepth:      opts.MaxDepth,
@@ -90,10 +82,12 @@ func (ors *OrganizationService) OrganizeDirectory(ctx context.Context, sourcePat
 		BufferSize:    opts.BatchSize,
 	}
 
-	rootNode, err := ors.directoryMgr.BuildDirectoryTree(ctx, sourcePath, traversalOpts)
+	rootNode, analysis, err := ors.directoryMgr.BuildDirectoryTreeWithAnalysis(ctx, sourcePath, traversalOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build directory tree: %w", err)
+		return nil, fmt.Errorf("failed to analyze and build directory tree: %w", err)
 	}
+
+	result.SourceAnalysis = analysis
 
 	// Process files concurrently
 	if err := ors.processDirectoryTree(ctx, rootNode, targetPath, opts, result); err != nil {
