@@ -88,13 +88,14 @@ func (fos *FileOperationsService) CopyFile(ctx context.Context, srcPath, dstPath
 	default:
 	}
 
-	// Handle conflicts
-	if err := fos.handleFileConflict(ctx, srcPath, dstPath, opts.Conflict); err != nil {
+	// Handle conflicts and get resolved destination path
+	resolvedDstPath, err := fos.handleFileConflict(ctx, srcPath, dstPath, opts.Conflict)
+	if err != nil {
 		return fmt.Errorf("conflict resolution failed: %w", err)
 	}
 
-	// Perform the actual copy with optimized I/O
-	if err := fos.performFileCopy(ctx, srcPath, dstPath, opts); err != nil {
+	// Perform the actual copy with optimized I/O using resolved path
+	if err := fos.performFileCopy(ctx, srcPath, resolvedDstPath, opts); err != nil {
 		fos.metrics.FailedOps++
 		return fmt.Errorf("file copy failed: %w", err)
 	}
@@ -229,7 +230,7 @@ func (fos *FileOperationsService) GetFileInfo(path string) (*trees.FileNode, err
 
 // calculateChecksumWithAlgorithm calculates checksum using specified algorithm
 func (fos *FileOperationsService) calculateChecksumWithAlgorithm(path, algorithm string) (string, error) {
-	// Placeholder implementation - would use actual checksum calculation
+	// TODO: Placeholder implementation - would use actual checksum calculation
 	// For now, return a simple hash based on file size and modification time
 	info, err := os.Stat(path)
 	if err != nil {
@@ -243,7 +244,7 @@ func (fos *FileOperationsService) calculateChecksumWithAlgorithm(path, algorithm
 
 // CopyDirectory copies a directory recursively from source path to destination path
 func (fos *FileOperationsService) CopyDirectory(ctx context.Context, srcPath, dstPath string, opts options.CopyOptions) error {
-	// This is a wrapper around the internal copyDirectory method
+	// TODO: This is a wrapper around the internal copyDirectory method
 	// For now, we'll create a simple DirectoryNode from the source path
 	srcInfo, err := os.Stat(srcPath)
 	if err != nil {
@@ -606,23 +607,22 @@ func (fos *FileOperationsService) copyWithProgress(ctx context.Context, dst io.W
 	return written, nil
 }
 
-func (fos *FileOperationsService) handleFileConflict(ctx context.Context, srcPath, dstPath string, strategy options.ConflictStrategy) error {
+func (fos *FileOperationsService) handleFileConflict(ctx context.Context, srcPath, dstPath string, strategy options.ConflictStrategy) (string, error) {
 	// Check if destination exists
 	if _, err := os.Stat(dstPath); os.IsNotExist(err) {
-		return nil // No conflict
+		return dstPath, nil // No conflict - return original path
 	}
 
 	// Use conflict resolver if available
 	if fos.conflictResolver != nil {
 		resolvedPath, err := fos.conflictResolver.ResolveConflict(ctx, srcPath, dstPath, strategy)
 		if err != nil {
-			return err
+			return "", err
 		}
-		// FIXME: Update dstPath with resolved path
-		_ = resolvedPath // For now, just validate resolution worked
+		return resolvedPath, nil
 	}
 
-	return nil
+	return "", fmt.Errorf("conflict detected but no resolver available for: %s", dstPath)
 }
 
 func (fos *FileOperationsService) moveToTrash(ctx context.Context, path string) error {

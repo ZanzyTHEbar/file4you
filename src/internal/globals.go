@@ -1,8 +1,11 @@
 package internal
 
 import (
+	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -25,7 +28,20 @@ var (
 func getHomeDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		panic("Unable to get home directory")
+		// Fallback to current working directory if home directory is unavailable
+		cwd, cwdErr := os.Getwd()
+		if cwdErr != nil {
+			// Last resort - use tmp directory
+			log.Printf("Unable to get home or working directory, using /tmp: %v", err)
+			return "/tmp"
+		}
+		log.Printf("Unable to get home directory, using current working directory: %v", err)
+		return cwd
 	}
 	return homeDir
+}
+
+// GetLogger returns a properly configured zerolog logger instance
+func GetLogger() zerolog.Logger {
+	return zerolog.New(os.Stderr).With().Timestamp().Logger()
 }

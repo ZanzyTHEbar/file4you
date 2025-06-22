@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"time"
 
 	"file4you/internal/config"
 	"file4you/internal/db"
@@ -18,6 +17,7 @@ import (
 	"file4you/internal/trees"
 	"file4you/internal/ui"
 
+	"github.com/ZanzyTHEbar/assert-lib"
 	ignore "github.com/sabhiram/go-gitignore"
 )
 
@@ -77,8 +77,11 @@ func New(interactor ui.Interactor, centralDB db.ICentralDBProvider) (*FileSystem
 	depthUtils := utils.NewDepthUtils()
 	safetyUtils := utils.NewSafetyUtils()
 
+	// Create assert handler for workspace manager
+	assertHandler := assert.NewAssertHandler()
+
 	// Create workspace manager
-	workspaceManager := NewWorkspaceManager(centralDB, nil) // TODO: Add assert handler
+	workspaceManager := NewWorkspaceManager(centralDB, assertHandler)
 
 	// Create context for concurrent operations
 	ctx := context.Background()
@@ -116,7 +119,6 @@ func New(interactor ui.Interactor, centralDB db.ICentralDBProvider) (*FileSystem
 
 // OrganizeDirectory organizes files in a directory using modern service architecture
 func (dfs *FileSystem) OrganizeDirectory(ctx context.Context, sourceDir, targetDir string, opts options.OrganizationOptions) (*types.OrganizationResult, error) {
-	start := time.Now()
 	slog.Info("Starting directory organization",
 		"source", sourceDir,
 		"target", targetDir,
@@ -139,26 +141,13 @@ func (dfs *FileSystem) OrganizeDirectory(ctx context.Context, sourceDir, targetD
 	opts.TargetDir = targetDir
 
 	// Use the organization service
-	if err := dfs.organizationService.OrganizeFiles(ctx, opts); err != nil {
+	result, err := dfs.organizationService.OrganizeDirectory(ctx, sourceDir, targetDir, opts)
+	if err != nil {
 		return nil, fmt.Errorf("organization failed: %w", err)
 	}
 
-	// FIXME: For now, return a basic result (the actual result would come from a different method)
-	result := &types.OrganizationResult{
-		StartTime:      start,
-		EndTime:        time.Now(),
-		Duration:       time.Since(start),
-		SourcePath:     sourceDir,
-		TargetPath:     targetDir,
-		Success:        true,
-		DryRun:         opts.DryRun,
-		ProcessedFiles: make([]types.FileOperation, 0), // TODO: Get from service
-		Conflicts:      make([]types.ConflictInfo, 0),  // TODO: Get from service
-		Events:         make([]types.Event, 0),         // TODO: Get from service
-	}
-
 	slog.Info("Directory organization completed",
-		"duration", time.Since(start),
+		"duration", result.Duration,
 		"processed", len(result.ProcessedFiles),
 		"conflicts", len(result.Conflicts))
 

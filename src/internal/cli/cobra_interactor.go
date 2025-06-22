@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"file4you/internal/terminal" // Assuming your existing terminal functions are here
@@ -94,18 +95,30 @@ func (ci *CobraInteractor) Select(message string, options []string, defaultValue
 		return defaultValue, nil
 	}
 
-	// TODO: Add proper input validation for selection (number or direct string match)
-	// For now, assume direct string match or return default if empty
+	// Input validation: support both number selection and direct string match
+	// First try to parse as a number
+	if num, err := strconv.Atoi(strings.TrimSpace(inputStr)); err == nil {
+		// Validate number is within range
+		if num >= 1 && num <= len(options) {
+			return options[num-1], nil
+		}
+		ci.Warningf("Invalid selection number. Must be between 1 and %d.", len(options))
+	}
+
+	// Try direct string match (case-insensitive)
 	for _, opt := range options {
-		if strings.EqualFold(inputStr, opt) {
+		if strings.EqualFold(strings.TrimSpace(inputStr), opt) {
 			return opt, nil
 		}
 	}
+
+	// If we have a default value, use it and warn
 	if defaultValue != "" {
-		ci.Warningf("Invalid selection. Defaulting to %s.", defaultValue)
+		ci.Warningf("Invalid selection '%s'. Defaulting to %s.", inputStr, defaultValue)
 		return defaultValue, nil
 	}
-	return "", fmt.Errorf("invalid selection: %s", inputStr)
+
+	return "", fmt.Errorf("invalid selection: %s. Please enter a number (1-%d) or option name", inputStr, len(options))
 }
 
 func (ci *CobraInteractor) Output(message string) {

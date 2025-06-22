@@ -38,6 +38,7 @@ type DirectoryService interface {
 type OrganizationService interface {
 	// Core organization
 	OrganizeFiles(ctx context.Context, opts options.OrganizationOptions) error
+	OrganizeDirectory(ctx context.Context, sourcePath, targetPath string, opts options.OrganizationOptions) (*types.OrganizationResult, error)
 	DetermineTargetPath(ctx context.Context, fileNode *trees.FileNode, opts options.OrganizationOptions) (string, bool, error)
 
 	// Workflow operations
