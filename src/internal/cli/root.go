@@ -48,7 +48,7 @@ func NewRootCMD(params *CmdParams) *RootCMD {
 func NewRoot(params *CmdParams) *cobra.Command {
 	// rootCmd represents the base command when called without any subcommands
 	rootCmd := &cobra.Command{
-		Use:     fmt.Sprintf("%s", internal.DefaultAppName),
+		Use:     internal.DefaultAppName,
 		Aliases: []string{internal.DefaultAppCMDShortCut},
 		Short:   fmt.Sprintf("%s is a tool to intelligently automate filing and directory organization", internal.DefaultAppName),
 	}
