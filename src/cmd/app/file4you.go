@@ -2,6 +2,7 @@ package main
 
 import (
 	"file4you/internal/cli"
+	"file4you/internal/cli/cli_util"
 	fscli "file4you/internal/cli/fs"
 	"file4you/internal/cli/workspace"
 	"file4you/internal/config"
@@ -52,13 +53,16 @@ func main() {
 	cmdParams.Palette = []*cobra.Command{
 		// File system commands
 		fscli.NewOrganize(cmdParams),
+		fscli.NewAnalyze(cmdParams),
+		fscli.NewSearch(cmdParams),
 
 		// Workspace management commands
 		workspace.NewWorkspace(cmdParams),
 
-		// TODO: Utility commands - check if these exist first
-		// cli_util.NewVersion(cmdParams),
-		// cli_util.NewHelp(cmdParams),
+		// Utility commands
+		cli_util.NewVersion(cmdParams),
+		cli_util.NewConfig(cmdParams),
+		cli_util.NewStatus(cmdParams),
 	}
 
 	rootCmd := cli.NewRootCMD(cmdParams)
