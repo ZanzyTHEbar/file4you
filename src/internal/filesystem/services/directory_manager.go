@@ -295,16 +295,23 @@ func (dm *DirectoryManagerService) buildIndexes(ctx context.Context, indexTypes 
 	}
 
 	for _, indexType := range indexTypes {
+		// Check for context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		switch indexType {
 		case "path":
 			// Path index is built automatically during tree construction
-			slog.Debug("Path index ready")
+			slog.Debug("Path index ready", "batchSize", batchSize)
 		case "spatial":
 			// Spatial index is built automatically during tree construction
-			slog.Debug("Spatial index ready")
+			slog.Debug("Spatial index ready", "batchSize", batchSize)
 		case "multi":
 			// Multi-index is built automatically during tree construction
-			slog.Debug("Multi-index ready")
+			slog.Debug("Multi-index ready", "batchSize", batchSize)
 		default:
 			slog.Warn("Unknown index type", "type", indexType)
 		}

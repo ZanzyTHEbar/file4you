@@ -2,11 +2,14 @@ package services
 
 import (
 	"context"
+	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -230,16 +233,35 @@ func (fos *FileOperationsService) GetFileInfo(path string) (*trees.FileNode, err
 
 // calculateChecksumWithAlgorithm calculates checksum using specified algorithm
 func (fos *FileOperationsService) calculateChecksumWithAlgorithm(path, algorithm string) (string, error) {
-	// TODO: Placeholder implementation - would use actual checksum calculation
-	// For now, return a simple hash based on file size and modification time
-	info, err := os.Stat(path)
+	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to stat file %s: %w", path, err)
+		return "", fmt.Errorf("failed to open file %s: %w", path, err)
 	}
+	defer file.Close()
 
-	// Simple checksum based on size and modtime (not cryptographically secure)
-	hash := fmt.Sprintf("%d_%d", info.Size(), info.ModTime().Unix())
-	return hash, nil
+	// Use the specified algorithm
+	switch strings.ToLower(algorithm) {
+	case "md5":
+		hasher := md5.New()
+		if _, err := io.Copy(hasher, file); err != nil {
+			return "", fmt.Errorf("failed to calculate MD5 checksum: %w", err)
+		}
+		return fmt.Sprintf("%x", hasher.Sum(nil)), nil
+	case "sha256":
+		hasher := sha256.New()
+		if _, err := io.Copy(hasher, file); err != nil {
+			return "", fmt.Errorf("failed to calculate SHA256 checksum: %w", err)
+		}
+		return fmt.Sprintf("%x", hasher.Sum(nil)), nil
+	default:
+		// Fallback to simple size/time based hash
+		info, err := file.Stat()
+		if err != nil {
+			return "", fmt.Errorf("failed to stat file %s: %w", path, err)
+		}
+		hash := fmt.Sprintf("%d_%d", info.Size(), info.ModTime().Unix())
+		return hash, nil
+	}
 }
 
 // CopyDirectory copies a directory recursively from source path to destination path
@@ -625,7 +647,7 @@ func (fos *FileOperationsService) handleFileConflict(ctx context.Context, srcPat
 	return "", fmt.Errorf("conflict detected but no resolver available for: %s", dstPath)
 }
 
-func (fos *FileOperationsService) moveToTrash(ctx context.Context, path string) error {
+func (fos *FileOperationsService) moveToTrash(_ context.Context, path string) error {
 	if fos.cacheDir == "" {
 		return fmt.Errorf("trash directory not configured")
 	}
@@ -657,6 +679,13 @@ func (fos *FileOperationsService) updateMetrics(start time.Time, isDirectory boo
 	duration := time.Since(start)
 	if fos.metrics.TotalBytesTransferred > 0 {
 		fos.metrics.AverageSpeed = float64(fos.metrics.TotalBytesTransferred) / duration.Seconds()
+	}
+
+	// Log different operation types for better metrics tracking
+	if isDirectory {
+		slog.Debug("Directory operation completed", "duration", duration)
+	} else {
+		slog.Debug("File operation completed", "duration", duration)
 	}
 }
 

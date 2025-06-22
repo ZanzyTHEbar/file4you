@@ -272,7 +272,7 @@ func (ors *OrganizationService) processFile(ctx context.Context, file *trees.Fil
 
 // determineTargetCategory determines the target category for a file using rule-based logic
 func (ors *OrganizationService) determineTargetCategory(ctx context.Context, file *trees.FileNode, opts options.OrganizationOptions) (string, error) {
-	// For now, use rule-based categorization
+	// TODO: For now, use rule-based categorization
 	// AI categorization can be added later when available
 	if opts.UseAI {
 		slog.Debug("AI categorization requested but not available, falling back to rule-based")
@@ -283,7 +283,7 @@ func (ors *OrganizationService) determineTargetCategory(ctx context.Context, fil
 }
 
 // categorizeWithAI is a placeholder for future AI categorization
-func (ors *OrganizationService) categorizeWithAI(ctx context.Context, file *trees.FileNode, prompt string) (string, error) {
+func (ors *OrganizationService) categorizeWithAI(_ctx context.Context, _file *trees.FileNode, _prompt string) (string, error) {
 	// Placeholder for future AI integration
 	return "", fmt.Errorf("AI categorization not yet implemented")
 }
@@ -373,6 +373,7 @@ func (ors *OrganizationService) PreviewOrganization(ctx context.Context, opts op
 // extractCategories extracts unique categories from operations
 func (ors *OrganizationService) extractCategories(operations []types.FileOperation) map[string]int {
 	categories := make(map[string]int)
+	slog.Debug("Extracting categories from operations", "operation_count", len(operations))
 	for _, op := range operations {
 		categories[op.Category]++
 	}

@@ -136,7 +136,7 @@ func (cr *ConflictResolverService) GenerateUniqueFilename(path string) string {
 }
 
 // resolveByOverwrite handles overwrite strategy
-func (cr *ConflictResolverService) resolveByOverwrite(ctx context.Context, srcPath, dstPath string) (string, error) {
+func (cr *ConflictResolverService) resolveByOverwrite(_ context.Context, _ string, dstPath string) (string, error) {
 	// Check if destination exists and is writable
 	if info, err := os.Stat(dstPath); err == nil {
 		if info.Mode().Perm()&0200 == 0 {
@@ -149,13 +149,13 @@ func (cr *ConflictResolverService) resolveByOverwrite(ctx context.Context, srcPa
 }
 
 // resolveBySkip handles skip strategy
-func (cr *ConflictResolverService) resolveBySkip(ctx context.Context, srcPath, dstPath string) (string, error) {
+func (cr *ConflictResolverService) resolveBySkip(_ context.Context, _ string, _ string) (string, error) {
 	// Return empty string to indicate skipping
 	return "", nil
 }
 
 // resolveByRename handles rename strategy
-func (cr *ConflictResolverService) resolveByRename(ctx context.Context, srcPath, dstPath string) (string, error) {
+func (cr *ConflictResolverService) resolveByRename(_ context.Context, _ string, dstPath string) (string, error) {
 	return cr.GenerateUniqueFilename(dstPath), nil
 }
 
