@@ -94,7 +94,7 @@ func (wm *WorkspaceManager) UpdateWorkspace(workspaceID uuid.UUID, newConfig str
 	if err != nil {
 		return fmt.Errorf("failed to update workspace configuration: %v", err)
 	}
-	slog.Debug(fmt.Sprintf("Workspace with ID %d updated.\n", workspaceID))
+	slog.Debug(fmt.Sprintf("Workspace with ID %s updated.\n", workspaceID))
 	return nil
 }
 
@@ -125,7 +125,7 @@ func (wm *WorkspaceManager) DeleteWorkspace(workspaceID uuid.UUID) error {
 	if err := os.Remove(workspaceDBPath); err != nil {
 		return fmt.Errorf("failed to delete workspace DB file: %v", err)
 	}
-	slog.Debug(fmt.Sprintf("Workspace with ID %d deleted.\n", workspaceID))
+	slog.Debug(fmt.Sprintf("Workspace with ID %s deleted.\n", workspaceID))
 	return nil
 }
 

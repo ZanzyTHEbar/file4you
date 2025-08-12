@@ -233,18 +233,16 @@ func (m *MockCentralDBProvider) GetWorkspacePath(workspaceID uuid.UUID) (string,
 	return workspace.RootPath, nil
 }
 
-func (m *MockCentralDBProvider) GetWorkspaceID(rootPath string) (int, error) {
+func (m *MockCentralDBProvider) GetWorkspaceID(rootPath string) (uuid.UUID, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for _, ws := range m.workspaces {
+	for id, ws := range m.workspaces {
 		if ws.RootPath == rootPath {
-			// TODO: This is a bit awkward - the real implementation might return an int ID,
-			// but we have UUID. For mock purposes, return 1 to indicate success.
-			return 1, nil
+			return id, nil
 		}
 	}
-	return 0, fmt.Errorf("no workspace found for path %s", rootPath)
+	return uuid.Nil, fmt.Errorf("no workspace found for path %s", rootPath)
 }
 
 func (m *MockCentralDBProvider) GetWorkspaceConfig(workspaceID uuid.UUID) (string, error) {

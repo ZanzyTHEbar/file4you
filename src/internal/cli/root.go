@@ -60,6 +60,8 @@ func NewRoot(params *CmdParams) *cobra.Command {
 
 	// Add commands to the root
 	rootCmd.AddCommand(params.Palette...)
+	// Hidden command to build an index snapshot for a directory (experimental)
+	rootCmd.AddCommand(newIndexBuildCmd(params))
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", fmt.Sprintf("config file (default %s)", internal.DefaultGlobalConfigFile))
 

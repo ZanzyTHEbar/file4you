@@ -34,7 +34,7 @@ type ICentralDBProvider interface {
 	UpdateWorkspaceConfig(workspaceID uuid.UUID, config string) (bool, error)
 	GetWorkspace(id uuid.UUID) (*Workspace, error)
 	GetWorkspacePath(workspaceID uuid.UUID) (string, error)
-	GetWorkspaceID(rootPath string) (int, error)
+	GetWorkspaceID(rootPath string) (uuid.UUID, error)
 	GetWorkspaceConfig(workspaceID uuid.UUID) (string, error)
 	SetWorkspaceConfig(workspaceID uuid.UUID, config string) error
 	DeleteWorkspace(workspaceID uuid.UUID) error

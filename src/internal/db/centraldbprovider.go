@@ -141,18 +141,17 @@ func (c *CentralDBProvider) GetWorkspacePath(workspaceID uuid.UUID) (string, err
 	return rootPath, err
 }
 
-func (c *CentralDBProvider) GetWorkspaceID(rootPath string) (int, error) {
-	var id string
-	err := c.db.QueryRow("SELECT id FROM workspaces WHERE root_path = ?", rootPath).Scan(&id)
+func (c *CentralDBProvider) GetWorkspaceID(rootPath string) (uuid.UUID, error) {
+	var idStr string
+	err := c.db.QueryRow("SELECT id FROM workspaces WHERE root_path = ?", rootPath).Scan(&idStr)
 	if err != nil {
-		return 0, err
+		return uuid.Nil, err
 	}
-
-	// Note: Interface defines return as int, but we store UUIDs as strings
-	// This is a design inconsistency that should be addressed in interface definition
-	// For now, returning 0 to indicate we found the workspace (non-zero would indicate error)
-	// TODO: Update interface to return UUID instead of int for consistency
-	return 1, nil // Return 1 to indicate workspace was found
+	parsed, pErr := uuid.Parse(idStr)
+	if pErr != nil {
+		return uuid.Nil, fmt.Errorf("failed to parse workspace id: %w", pErr)
+	}
+	return parsed, nil
 }
 
 func (c *CentralDBProvider) GetWorkspaceConfig(workspaceID uuid.UUID) (string, error) {
